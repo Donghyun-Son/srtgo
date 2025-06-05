@@ -24,7 +24,7 @@ dependencies = [
     "requests",
     "termcolor"
 ]
-optional-dependencies = { web = ["flask"] }
+optional-dependencies = { web = ["flask"], dev = ["pytest"] }
 dynamic = ["version"]
 [tool.setuptools_scm]
 
