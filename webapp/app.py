@@ -1,7 +1,7 @@
 import functools
 import secrets
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flasgger import Swagger
 import keyring
 from keyring.errors import KeyringError
@@ -18,7 +18,7 @@ from srtgo.core import (
     set_option_settings,
 )
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", static_url_path="")
 Swagger(app)
 
 TOKEN_SERVICE = "webapp"
@@ -41,6 +41,11 @@ def _ensure_token() -> str:
 
 
 AUTH_TOKEN = _ensure_token()
+
+
+@app.get("/")
+def index_page():
+    return app.send_static_file("index.html")
 
 
 def require_auth(func):
