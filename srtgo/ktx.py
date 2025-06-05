@@ -101,6 +101,30 @@ class Train(Schedule):
                 repr_str += f", 예약대기 {'가능' if self.has_general_waiting_list() else '매진'}"
         return repr_str
 
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the train."""
+        return {
+            "train_type": self.train_type,
+            "train_type_name": self.train_type_name,
+            "train_group": self.train_group,
+            "train_no": self.train_no,
+            "delay_time": self.delay_time,
+            "dep_name": self.dep_name,
+            "dep_code": self.dep_code,
+            "dep_date": self.dep_date,
+            "dep_time": self.dep_time,
+            "arr_name": self.arr_name,
+            "arr_code": self.arr_code,
+            "arr_date": self.arr_date,
+            "arr_time": self.arr_time,
+            "run_date": self.run_date,
+            "reserve_possible": self.reserve_possible,
+            "reserve_possible_name": self.reserve_possible_name,
+            "special_seat": self.special_seat,
+            "general_seat": self.general_seat,
+            "wait_reserve_flag": self.wait_reserve_flag,
+        }
+
     def has_special_seat(self):
         return self.special_seat == '11'
 
@@ -147,6 +171,23 @@ class Ticket(Train):
     def get_ticket_no(self):
         return "-".join(map(str, (self.sale_info1, self.sale_info2, self.sale_info3, self.sale_info4)))
 
+    def to_dict(self) -> dict:
+        """Return ticket information as a dictionary."""
+        return {
+            "seat_no_end": self.seat_no_end,
+            "seat_no_count": self.seat_no_count,
+            "buyer_name": self.buyer_name,
+            "sale_date": self.sale_date,
+            "pnr_no": self.pnr_no,
+            "sale_info1": self.sale_info1,
+            "sale_info2": self.sale_info2,
+            "sale_info3": self.sale_info3,
+            "sale_info4": self.sale_info4,
+            "price": self.price,
+            "car_no": self.car_no,
+            "seat_no": self.seat_no,
+        }
+
 class Reservation(Train):
     """Train reservation information"""
     def __init__(self, data):
@@ -173,6 +214,33 @@ class Reservation(Train):
             buy_limit_date = f"{int(self.buy_limit_date[4:6])}월 {int(self.buy_limit_date[6:])}일"
             repr_str += f", 구입기한 {buy_limit_date} {buy_limit_time}"
         return repr_str
+
+    def to_dict(self) -> dict:
+        """Return reservation information as a dictionary."""
+        return {
+            "dep_date": self.dep_date,
+            "arr_date": self.arr_date,
+            "rsv_id": self.rsv_id,
+            "seat_no_count": self.seat_no_count,
+            "buy_limit_date": self.buy_limit_date,
+            "buy_limit_time": self.buy_limit_time,
+            "price": self.price,
+            "journey_no": self.journey_no,
+            "journey_cnt": self.journey_cnt,
+            "rsv_chg_no": self.rsv_chg_no,
+            "is_waiting": self.is_waiting,
+            "train_type": self.train_type,
+            "train_type_name": self.train_type_name,
+            "train_group": self.train_group,
+            "train_no": self.train_no,
+            "dep_name": self.dep_name,
+            "dep_code": self.dep_code,
+            "dep_time": self.dep_time,
+            "arr_name": self.arr_name,
+            "arr_code": self.arr_code,
+            "arr_time": self.arr_time,
+            "run_date": self.run_date,
+        }
 
 
 # Passenger classes

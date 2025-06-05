@@ -286,6 +286,21 @@ class SRTTicket:
             f"[{self.price}원({self.discount}원 할인)]"
         )
 
+    def to_dict(self) -> dict:
+        """Return ticket information as a dictionary."""
+        return {
+            "car": self.car,
+            "seat": self.seat,
+            "seat_type_code": self.seat_type_code,
+            "seat_type": self.seat_type,
+            "passenger_type_code": self.passenger_type_code,
+            "passenger_type": self.passenger_type,
+            "price": self.price,
+            "original_price": self.original_price,
+            "discount": self.discount,
+            "is_waiting": self.is_waiting,
+        }
+
 
 class SRTReservation:
     def __init__(self, train, pay, tickets):
@@ -318,6 +333,30 @@ class SRTReservation:
         return self.dump()
 
     __repr__ = __str__
+
+    def to_dict(self) -> dict:
+        """Return reservation details as a dictionary."""
+        return {
+            "reservation_number": self.reservation_number,
+            "total_cost": self.total_cost,
+            "seat_count": self.seat_count,
+            "train_code": self.train_code,
+            "train_name": self.train_name,
+            "train_number": self.train_number,
+            "dep_date": self.dep_date,
+            "dep_time": self.dep_time,
+            "dep_station_code": self.dep_station_code,
+            "dep_station_name": self.dep_station_name,
+            "arr_time": self.arr_time,
+            "arr_station_code": self.arr_station_code,
+            "arr_station_name": self.arr_station_name,
+            "payment_date": self.payment_date,
+            "payment_time": self.payment_time,
+            "paid": self.paid,
+            "is_running": self.is_running,
+            "is_waiting": self.is_waiting,
+            "tickets": [t.__dict__ for t in self._tickets],
+        }
 
     def dump(self):
         base = (
@@ -440,6 +479,26 @@ class SRTTrain(Train):
 
     def __repr__(self):
         return self.dump()
+
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the train."""
+        return {
+            "train_code": self.train_code,
+            "train_name": self.train_name,
+            "train_number": self.train_number,
+            "dep_date": self.dep_date,
+            "dep_time": self.dep_time,
+            "dep_station_code": self.dep_station_code,
+            "dep_station_name": self.dep_station_name,
+            "arr_date": self.arr_date,
+            "arr_time": self.arr_time,
+            "arr_station_code": self.arr_station_code,
+            "arr_station_name": self.arr_station_name,
+            "general_seat_state": self.general_seat_state,
+            "special_seat_state": self.special_seat_state,
+            "reserve_wait_possible_name": self.reserve_wait_possible_name,
+            "reserve_wait_possible_code": self.reserve_wait_possible_code,
+        }
 
     def dump(self):
         dep_hour, dep_min = self.dep_time[0:2], self.dep_time[2:4]

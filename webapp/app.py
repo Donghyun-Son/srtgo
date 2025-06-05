@@ -32,7 +32,7 @@ def search_route():
     date = request.args["date"]
     time = request.args.get("time", "000000")
     trains = search_trains(rail_type, dep, arr, date, time)
-    return jsonify([str(t) for t in trains])
+    return jsonify([getattr(t, "to_dict", lambda: t.__dict__)() for t in trains])
 
 
 @app.post("/reserve")
@@ -49,14 +49,14 @@ def reserve_route():
         data.get("seat_type"),
         data.get("pay", False),
     )
-    return jsonify({"reservation": str(reservation)})
+    return jsonify({"reservation": getattr(reservation, "to_dict", lambda: reservation.__dict__)()})
 
 
 @app.get("/reservations")
 def list_reservations():
     rail_type = request.args.get("rail_type", "SRT")
     res = get_reservations(rail_type)
-    return jsonify([str(r) for r in res])
+    return jsonify([getattr(r, "to_dict", lambda: r.__dict__)() for r in res])
 
 
 @app.delete("/reservations/<pnr>")
