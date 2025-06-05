@@ -6,7 +6,7 @@ let controller = null;
 self.addEventListener('message', event => {
   if (event.data.type === 'reserve') {
     controller = new AbortController();
-    reserve(event.data.payload, event.source);
+    event.waitUntil(reserve(event.data.payload, event.source));
   } else if (event.data.type === 'cancel' && controller) {
     controller.abort();
   }

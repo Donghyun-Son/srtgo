@@ -1,10 +1,20 @@
 let token = localStorage.getItem('token') || '';
-
-document.getElementById('auth-token').value = token;
+const tokenInput = document.getElementById('auth-token');
+tokenInput.value = token;
 document.getElementById('save-token').onclick = () => {
-  token = document.getElementById('auth-token').value.trim();
+  token = tokenInput.value.trim();
   localStorage.setItem('token', token);
   showMessage('Token saved');
+};
+document.getElementById('reset-token').onclick = () => {
+  api('/token', {method: 'POST'}).then(res => {
+    if (res.token) {
+      token = res.token;
+      tokenInput.value = token;
+      localStorage.setItem('token', token);
+      showMessage('New token issued');
+    }
+  });
 };
 
 function api(path, options = {}) {
@@ -21,12 +31,11 @@ function showMessage(msg) {
 }
 
 function setActive(view) {
-  document.querySelectorAll('nav button').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === view);
+  document.querySelectorAll('#nav .nav-link').forEach(a => {
+    a.classList.toggle('active', a.dataset.view === view);
   });
-  document.querySelectorAll('main .view').forEach(s => {
-    s.classList.toggle('hidden', s.id !== view);
-  });
+  document.querySelectorAll('.view').forEach(s => {
+    s.classList.toggle('d-none', s.id !== view);
 }
 
 document.getElementById('nav').addEventListener('click', e => {
@@ -70,8 +79,10 @@ function showTrains(list) {
   ul.innerHTML = '';
   list.forEach(train => {
     const li = document.createElement('li');
+    li.className = 'list-group-item d-flex justify-content-between align-items-center';
     li.textContent = `[${train.train_number}] ${train.dep_time} - ${train.arr_time}`;
     const btn = document.createElement('button');
+    btn.className = 'btn btn-sm btn-outline-primary';
     btn.textContent = 'Reserve';
     btn.onclick = () => reserveTrain(train);
     li.appendChild(btn);
@@ -90,24 +101,34 @@ function reserveTrain(train) {
           arrival: document.getElementById('search-arrival').value,
           date: document.getElementById('search-date').value.replaceAll('-',''),
           time: train.dep_time,
-          rail_type: document.getElementById('search-rail').value
+          rail_type: document.getElementById('search-rail').value,
+          seat_type: document.getElementById('seat-type').value,
+          passengers:{
+            adult: document.getElementById('adult-count').value,
+            child: document.getElementById('child-count').value
+          },
+          pay: document.getElementById('pay-now').checked
         }
       }
     });
+    document.getElementById('cancel-bg').classList.remove('d-none');
     showMessage('Reservation started in background');
   }
 }
 
 // Reservations
 function loadReservations() {
-  fetch('/reservations?rail_type=SRT', {headers:{'X-Auth-Token':token}})
+  const rail = document.getElementById('res-rail').value;
+  fetch('/reservations?rail_type='+rail, {headers:{'X-Auth-Token':token}})
     .then(r=>r.json()).then(list=>{
       const ul = document.getElementById('reservations-list');
       ul.innerHTML='';
       list.forEach(r=>{
         const li=document.createElement('li');
+        li.className='list-group-item d-flex justify-content-between align-items-center';
         li.textContent = r.reservation_number || JSON.stringify(r);
         const btn=document.createElement('button');
+        btn.className='btn btn-sm btn-outline-danger';
         btn.textContent='Cancel';
         btn.onclick=()=>cancelReservation(r.reservation_number);
         li.appendChild(btn);
@@ -118,8 +139,16 @@ function loadReservations() {
 
 document.getElementById('refresh-reservations').onclick=loadReservations;
 
+document.getElementById('cancel-bg').onclick = () => {
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({type:'cancel'});
+    document.getElementById('cancel-bg').classList.add('d-none');
+  }
+};
+
 function cancelReservation(pnr){
-  fetch('/reservations/'+pnr+'?rail_type=SRT',{method:'DELETE',headers:{'X-Auth-Token':token}})
+  const rail = document.getElementById('res-rail').value;
+  fetch('/reservations/'+pnr+'?rail_type='+rail,{method:'DELETE',headers:{'X-Auth-Token':token}})
     .then(r=>r.json()).then(res=>{showMessage(res.message);loadReservations();});
 }
 
@@ -142,6 +171,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js');
   navigator.serviceWorker.addEventListener('message', e => {
     if (e.data.type === 'reserve-result') {
+      document.getElementById('cancel-bg').classList.add('d-none');
       showMessage(e.data.success ? 'Reservation complete' : 'Reservation failed');
     }
   });
