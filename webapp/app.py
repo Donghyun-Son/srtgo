@@ -47,94 +47,136 @@ def require_auth(func):
 @app.post("/login")
 @require_auth
 def login_route():
-    data = request.get_json(force=True)
-    rail_type = data.get("rail_type", "SRT")
-    if set_login_credentials(rail_type, data["id"], data["password"]):
-        return jsonify({"status": "ok"})
-    return jsonify({"status": "fail"}), 400
+    try:
+        data = request.get_json(force=True)
+        rail_type = data.get("rail_type", "SRT")
+        success = set_login_credentials(rail_type, data["id"], data["password"])
+        if success:
+            return jsonify({"message": "ok"})
+        return jsonify({"message": "Invalid credentials"}), 400
+    except KeyError as exc:
+        return jsonify({"message": f"Missing field: {exc.args[0]}"}), 400
+    except Exception as exc:
+        return jsonify({"message": str(exc)}), 500
 
 
 @app.get("/reserve")
 @require_auth
 def search_route():
-    rail_type = request.args.get("rail_type", "SRT")
-    dep = request.args["departure"]
-    arr = request.args["arrival"]
-    date = request.args["date"]
-    time = request.args.get("time", "000000")
-    trains = search_trains(rail_type, dep, arr, date, time)
-    return jsonify([str(t) for t in trains])
+    try:
+        rail_type = request.args.get("rail_type", "SRT")
+        dep = request.args["departure"]
+        arr = request.args["arrival"]
+        date = request.args["date"]
+        time = request.args.get("time", "000000")
+        trains = search_trains(rail_type, dep, arr, date, time)
+        return jsonify([str(t) for t in trains])
+    except KeyError as exc:
+        return jsonify({"message": f"Missing parameter: {exc.args[0]}"}), 400
+    except ValueError as exc:
+        return jsonify({"message": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"message": str(exc)}), 500
 
 
 @app.post("/reserve")
 @require_auth
 def reserve_route():
-    data = request.get_json(force=True)
-    rail_type = data.get("rail_type", "SRT")
-    reservation = reserve_train(
-        rail_type,
-        data["departure"],
-        data["arrival"],
-        data["date"],
-        data.get("time", "000000"),
-        data.get("passengers"),
-        data.get("seat_type"),
-        data.get("pay", False),
-    )
-    return jsonify({"reservation": str(reservation)})
+    try:
+        data = request.get_json(force=True)
+        rail_type = data.get("rail_type", "SRT")
+        reservation = reserve_train(
+            rail_type,
+            data["departure"],
+            data["arrival"],
+            data["date"],
+            data.get("time", "000000"),
+            data.get("passengers"),
+            data.get("seat_type"),
+            data.get("pay", False),
+        )
+        return jsonify({"reservation": str(reservation)})
+    except KeyError as exc:
+        return jsonify({"message": f"Missing field: {exc.args[0]}"}), 400
+    except ValueError as exc:
+        return jsonify({"message": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"message": str(exc)}), 500
 
 
 @app.get("/reservations")
 @require_auth
 def list_reservations():
-    rail_type = request.args.get("rail_type", "SRT")
-    res = get_reservations(rail_type)
-    return jsonify([str(r) for r in res])
+    try:
+        rail_type = request.args.get("rail_type", "SRT")
+        res = get_reservations(rail_type)
+        return jsonify([str(r) for r in res])
+    except Exception as exc:
+        return jsonify({"message": str(exc)}), 500
 
 
 @app.delete("/reservations/<pnr>")
 @require_auth
 def cancel(pnr):
-    rail_type = request.args.get("rail_type", "SRT")
-    res_list = get_reservations(rail_type)
-    for r in res_list:
-        if getattr(r, "reservation_number", None) == pnr:
-            cancel_reservation(rail_type, r)
-            return jsonify({"status": "ok"})
-    return jsonify({"status": "not_found"}), 404
+    try:
+        rail_type = request.args.get("rail_type", "SRT")
+        res_list = get_reservations(rail_type)
+        for r in res_list:
+            if getattr(r, "reservation_number", None) == pnr:
+                cancel_reservation(rail_type, r)
+                return jsonify({"message": "ok"})
+        return jsonify({"message": "not_found"}), 404
+    except Exception as exc:
+        return jsonify({"message": str(exc)}), 500
 
 
 @app.post("/settings/card")
 @require_auth
 def card_settings():
-    data = request.get_json(force=True)
-    set_card_info(data["number"], data["password"], data["birthday"], data["expire"])
-    return jsonify({"status": "ok"})
+    try:
+        data = request.get_json(force=True)
+        set_card_info(data["number"], data["password"], data["birthday"], data["expire"])
+        return jsonify({"message": "ok"})
+    except KeyError as exc:
+        return jsonify({"message": f"Missing field: {exc.args[0]}"}), 400
+    except Exception as exc:
+        return jsonify({"message": str(exc)}), 500
 
 
 @app.post("/settings/telegram")
 @require_auth
 def telegram_settings():
-    data = request.get_json(force=True)
-    set_telegram_info(data["token"], data["chat_id"])
-    return jsonify({"status": "ok"})
+    try:
+        data = request.get_json(force=True)
+        set_telegram_info(data["token"], data["chat_id"])
+        return jsonify({"message": "ok"})
+    except KeyError as exc:
+        return jsonify({"message": f"Missing field: {exc.args[0]}"}), 400
+    except Exception as exc:
+        return jsonify({"message": str(exc)}), 500
 
 
 @app.post("/settings/stations")
 @require_auth
 def station_settings():
-    data = request.get_json(force=True)
-    rail_type = data.get("rail_type", "SRT")
-    set_station_info(rail_type, data.get("stations", []))
-    return jsonify({"status": "ok"})
+    try:
+        data = request.get_json(force=True)
+        rail_type = data.get("rail_type", "SRT")
+        set_station_info(rail_type, data.get("stations", []))
+        return jsonify({"message": "ok"})
+    except Exception as exc:
+        return jsonify({"message": str(exc)}), 500
 
 
 @app.post("/settings/options")
 @require_auth
 def option_settings():
-    data = request.get_json(force=True)
-    set_option_settings(data.get("options", []))
-    return jsonify({"status": "ok"})
+    try:
+        data = request.get_json(force=True)
+        set_option_settings(data.get("options", []))
+        return jsonify({"message": "ok"})
+    except Exception as exc:
+        return jsonify({"message": str(exc)}), 500
 
 
 @app.post("/token")
