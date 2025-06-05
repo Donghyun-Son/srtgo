@@ -199,5 +199,17 @@ This returns a JSON list of trains, for example:
 
 A POST request to `/reserve` returns reservation details in a JSON object.
 
+On first start, an authentication token is generated and stored using
+`keyring`. Retrieve it with:
+
+```bash
+keyring get webapp token
+```
+
+Include this token in the `X-Auth-Token` header for all requests. To
+generate a new token, send a `POST` request to `/token` with the current
+token in the header.
+
+
 ## Acknowledgments
 - This project includes code from [SRT](https://github.com/ryanking13/SRT) by ryanking13, licensed under the MIT License, and [korail2](https://github.com/carpedm20/korail2) by carpedm20, licensed under the BSD License.
