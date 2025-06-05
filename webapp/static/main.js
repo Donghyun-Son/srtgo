@@ -36,6 +36,7 @@ function setActive(view) {
   });
   document.querySelectorAll('.view').forEach(s => {
     s.classList.toggle('d-none', s.id !== view);
+  });
 }
 
 document.getElementById('nav').addEventListener('click', e => {
