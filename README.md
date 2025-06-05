@@ -178,6 +178,27 @@ srtgo-web
 
 The Flask server provides REST endpoints on port `8000`.
 
+Example usage:
+
+```bash
+curl "http://localhost:8000/reserve?departure=수서&arrival=부산&date=20240101"
+```
+
+This returns a JSON list of trains, for example:
+
+```json
+[
+  {
+    "train_number": "333",
+    "dep_time": "1250",
+    "arr_time": "1434",
+    "general_seat_state": "매진"
+  }
+]
+```
+
+A POST request to `/reserve` returns reservation details in a JSON object.
+
 On first start, an authentication token is generated and stored using
 `keyring`. Retrieve it with:
 
@@ -188,6 +209,7 @@ keyring get webapp token
 Include this token in the `X-Auth-Token` header for all requests. To
 generate a new token, send a `POST` request to `/token` with the current
 token in the header.
+
 
 ## Acknowledgments
 - This project includes code from [SRT](https://github.com/ryanking13/SRT) by ryanking13, licensed under the MIT License, and [korail2](https://github.com/carpedm20/korail2) by carpedm20, licensed under the BSD License.
