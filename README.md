@@ -163,9 +163,20 @@ pip install git+https://github.com/lapis42/srtgo -U
 
 [?] 예약 취소 (Enter: 결정): [SRT] 01월 04일, 수서~동대구(13:00~14:46) 36800원(1석), 구입기한 01월 03일 16:57
  > [SRT] 01월 04일, 수서~동대구(13:00~14:46) 36800원(1석), 구입기한 01월 03일 16:57
-   텔레그램으로 예매 정보 전송
-   돌아가기
+  텔레그램으로 예매 정보 전송
+  돌아가기
 ```
+
+## Running the Web Server
+
+Install the optional `web` extras and start the server:
+
+```bash
+pip install .[web]
+srtgo-web
+```
+
+The Flask server provides REST endpoints on port `8000`.
 
 ## Acknowledgments
 - This project includes code from [SRT](https://github.com/ryanking13/SRT) by ryanking13, licensed under the MIT License, and [korail2](https://github.com/carpedm20/korail2) by carpedm20, licensed under the BSD License.
