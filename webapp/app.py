@@ -78,7 +78,19 @@ def search_route():
         arr = request.args["arrival"]
         date = request.args["date"]
         time = request.args.get("time", "000000")
-        trains = search_trains(rail_type, dep, arr, date, time)
+        inc_no = request.args.get("include_no_seats")
+        inc_wait = request.args.get("include_waiting_list")
+        include_no_seats = str(inc_no).lower() in ("1", "true", "yes")
+        include_waiting_list = str(inc_wait).lower() in ("1", "true", "yes")
+        trains = search_trains(
+            rail_type,
+            dep,
+            arr,
+            date,
+            time,
+            include_no_seats=include_no_seats,
+            include_waiting_list=include_waiting_list,
+        )
         return jsonify([getattr(t, "to_dict", lambda: t.__dict__)() for t in trains])
     except KeyError as exc:
         return jsonify({"message": f"Missing parameter: {exc.args[0]}"}), 400

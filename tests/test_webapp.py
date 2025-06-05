@@ -63,3 +63,29 @@ def test_reserve_missing_field(client):
     )
     assert resp.status_code == 400
     assert 'Missing field' in resp.get_json()['message']
+
+
+def test_search_default_flags(client):
+    with patch('webapp.app.search_trains', return_value=[]) as mock:
+        resp = client.get(
+            '/reserve?departure=A&arrival=B&date=20230101',
+            headers={'X-Auth-Token': AUTH_TOKEN}
+        )
+        assert resp.status_code == 200
+        mock.assert_called_once_with(
+            'SRT', 'A', 'B', '20230101', '000000',
+            include_no_seats=False, include_waiting_list=False
+        )
+
+
+def test_search_flags_forwarded(client):
+    with patch('webapp.app.search_trains', return_value=[]) as mock:
+        resp = client.get(
+            '/reserve?departure=A&arrival=B&date=20230101&rail_type=KTX&include_no_seats=1&include_waiting_list=true',
+            headers={'X-Auth-Token': AUTH_TOKEN}
+        )
+        assert resp.status_code == 200
+        mock.assert_called_once_with(
+            'KTX', 'A', 'B', '20230101', '000000',
+            include_no_seats=True, include_waiting_list=True
+        )

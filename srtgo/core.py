@@ -31,9 +31,32 @@ def login(rail_type: str = "SRT", debug: bool = False):
     return _cli_login(rail_type=rail_type, debug=debug)
 
 
-def search_trains(rail_type: str, departure: str, arrival: str, date: str, time: str):
+def search_trains(
+    rail_type: str,
+    departure: str,
+    arrival: str,
+    date: str,
+    time: str,
+    include_no_seats: bool = False,
+    include_waiting_list: bool = False,
+):
     rail = login(rail_type)
-    return rail.search_train(departure, arrival, date, time)
+    if rail_type == "SRT":
+        return rail.search_train(
+            departure,
+            arrival,
+            date,
+            time,
+            available_only=not include_no_seats,
+        )
+    return rail.search_train(
+        departure,
+        arrival,
+        date,
+        time,
+        include_no_seats=include_no_seats,
+        include_waiting_list=include_waiting_list,
+    )
 
 
 def _build_passengers(rail_type: str, counts: dict):
