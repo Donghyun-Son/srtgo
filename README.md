@@ -210,8 +210,17 @@ Include this token in the `X-Auth-Token` header for all requests. To
 generate a new token, send a `POST` request to `/token` with the current
 token in the header.
 
-See [api.md](api.md) for details of each endpoint.
+## Running Tests
 
+Install the development extras and run `pytest`:
+
+```bash
+pip install .[dev]
+pytest
+```
 
 ## Acknowledgments
+
+- See [api.md](api.md) for details of each endpoint.
+
 - This project includes code from [SRT](https://github.com/ryanking13/SRT) by ryanking13, licensed under the MIT License, and [korail2](https://github.com/carpedm20/korail2) by carpedm20, licensed under the BSD License.
