@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SRTgo Web</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <nav id="nav">
+    <button data-view="login">Login</button>
+    <button data-view="search">Search</button>
+    <button data-view="reservations">Reservations</button>
+    <button data-view="settings">Settings</button>
+  </nav>
+  <div id="token-box">
+    <label>Auth Token <input id="auth-token"></label>
+    <button id="save-token">Save</button>
+  </div>
+</header>
+<main>
+  <section id="login" class="view">
+    <h2>Login</h2>
+    <form id="login-form">
+      <label>User ID <input id="login-id" required></label>
+      <label>Password <input id="login-password" type="password" required></label>
+      <label>Rail Type
+        <select id="login-rail">
+          <option value="SRT">SRT</option>
+          <option value="KTX">KTX</option>
+        </select>
+      </label>
+      <button type="submit">Save</button>
+    </form>
+  </section>
+
+  <section id="search" class="view hidden">
+    <h2>Search Trains</h2>
+    <form id="search-form">
+      <label>Departure <input id="search-departure" required></label>
+      <label>Arrival <input id="search-arrival" required></label>
+      <label>Date <input id="search-date" type="date" required></label>
+      <label>Time <input id="search-time" type="time" value="00:00"></label>
+      <label>Rail Type
+        <select id="search-rail">
+          <option value="SRT">SRT</option>
+          <option value="KTX">KTX</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="include-no-seats"> Include sold out</label>
+      <label><input type="checkbox" id="include-waiting"> Include waiting list</label>
+      <button type="submit">Search</button>
+    </form>
+    <ul id="train-list"></ul>
+  </section>
+
+  <section id="reservations" class="view hidden">
+    <h2>Reservations</h2>
+    <button id="refresh-reservations">Refresh</button>
+    <ul id="reservations-list"></ul>
+  </section>
+
+  <section id="settings" class="view hidden">
+    <h2>Settings</h2>
+    <h3>Card</h3>
+    <form id="card-form">
+      <label>Number <input id="card-number" required></label>
+      <label>Password <input id="card-password" required></label>
+      <label>Birthday <input id="card-birthday" required></label>
+      <label>Expire <input id="card-expire" required></label>
+      <button type="submit">Save Card</button>
+    </form>
+    <h3>Telegram</h3>
+    <form id="telegram-form">
+      <label>Token <input id="telegram-token" required></label>
+      <label>Chat ID <input id="telegram-chat" required></label>
+      <button type="submit">Save Telegram</button>
+    </form>
+    <h3>Stations</h3>
+    <form id="station-form">
+      <label>Rail Type
+        <select id="station-rail">
+          <option value="SRT">SRT</option>
+          <option value="KTX">KTX</option>
+        </select>
+      </label>
+      <label>Stations (comma separated)
+        <input id="station-list">
+      </label>
+      <button type="submit">Save Stations</button>
+    </form>
+    <h3>Options</h3>
+    <form id="option-form">
+      <label>Options (comma separated)
+        <input id="option-list">
+      </label>
+      <button type="submit">Save Options</button>
+    </form>
+  </section>
+</main>
+
+<div id="messages"></div>
+<script src="main.js"></script>
+</body>
+</html>
