@@ -35,6 +35,8 @@ Search for trains.
 - `date` (string, required, format `YYYYMMDD`)
 - `time` (string, optional, `HHMMSS`, default `000000`)
 - `rail_type` (string, optional, default `SRT`)
+- `include_no_seats` (boolean, optional)
+- `include_waiting_list` (boolean, optional)
 
 ### Sample Response
 ```json

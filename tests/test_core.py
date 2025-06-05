@@ -24,7 +24,7 @@ def test_set_login_credentials_failure():
 
 
 def test_search_trains():
-    stub = SimpleNamespace(search_train=lambda d, a, dt, tm: ['t'])
+    stub = SimpleNamespace(search_train=lambda *args, **kwargs: ['t'])
     with patch.object(core, 'login', return_value=stub) as login_mock:
         result = core.search_trains('SRT', 'A', 'B', '20230101', '0000')
         assert result == ['t']
