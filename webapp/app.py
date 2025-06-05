@@ -1,4 +1,8 @@
+import functools
+import secrets
+
 from flask import Flask, request, jsonify
+import keyring
 
 from srtgo.core import (
     set_login_credentials,
@@ -14,8 +18,34 @@ from srtgo.core import (
 
 app = Flask(__name__)
 
+TOKEN_SERVICE = "webapp"
+TOKEN_NAME = "token"
+
+
+def _ensure_token() -> str:
+    token = keyring.get_password(TOKEN_SERVICE, TOKEN_NAME)
+    if token is None:
+        token = secrets.token_hex(16)
+        keyring.set_password(TOKEN_SERVICE, TOKEN_NAME, token)
+        print("Generated auth token:", token)
+    return token
+
+
+AUTH_TOKEN = _ensure_token()
+
+
+def require_auth(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        if request.headers.get("X-Auth-Token") != AUTH_TOKEN:
+            return jsonify({"error": "unauthorized"}), 401
+        return func(*args, **kwargs)
+
+    return wrapper
+
 
 @app.post("/login")
+@require_auth
 def login_route():
     data = request.get_json(force=True)
     rail_type = data.get("rail_type", "SRT")
@@ -25,6 +55,7 @@ def login_route():
 
 
 @app.get("/reserve")
+@require_auth
 def search_route():
     rail_type = request.args.get("rail_type", "SRT")
     dep = request.args["departure"]
@@ -36,6 +67,7 @@ def search_route():
 
 
 @app.post("/reserve")
+@require_auth
 def reserve_route():
     data = request.get_json(force=True)
     rail_type = data.get("rail_type", "SRT")
@@ -53,6 +85,7 @@ def reserve_route():
 
 
 @app.get("/reservations")
+@require_auth
 def list_reservations():
     rail_type = request.args.get("rail_type", "SRT")
     res = get_reservations(rail_type)
@@ -60,6 +93,7 @@ def list_reservations():
 
 
 @app.delete("/reservations/<pnr>")
+@require_auth
 def cancel(pnr):
     rail_type = request.args.get("rail_type", "SRT")
     res_list = get_reservations(rail_type)
@@ -71,6 +105,7 @@ def cancel(pnr):
 
 
 @app.post("/settings/card")
+@require_auth
 def card_settings():
     data = request.get_json(force=True)
     set_card_info(data["number"], data["password"], data["birthday"], data["expire"])
@@ -78,6 +113,7 @@ def card_settings():
 
 
 @app.post("/settings/telegram")
+@require_auth
 def telegram_settings():
     data = request.get_json(force=True)
     set_telegram_info(data["token"], data["chat_id"])
@@ -85,6 +121,7 @@ def telegram_settings():
 
 
 @app.post("/settings/stations")
+@require_auth
 def station_settings():
     data = request.get_json(force=True)
     rail_type = data.get("rail_type", "SRT")
@@ -93,10 +130,20 @@ def station_settings():
 
 
 @app.post("/settings/options")
+@require_auth
 def option_settings():
     data = request.get_json(force=True)
     set_option_settings(data.get("options", []))
     return jsonify({"status": "ok"})
+
+
+@app.post("/token")
+@require_auth
+def reset_token():
+    global AUTH_TOKEN
+    AUTH_TOKEN = secrets.token_hex(16)
+    keyring.set_password(TOKEN_SERVICE, TOKEN_NAME, AUTH_TOKEN)
+    return jsonify({"token": AUTH_TOKEN})
 
 
 def main():
