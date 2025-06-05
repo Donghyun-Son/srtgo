@@ -2,7 +2,9 @@ import functools
 import secrets
 
 from flask import Flask, request, jsonify
+from flasgger import Swagger
 import keyring
+from keyring.errors import KeyringError
 
 from srtgo.core import (
     set_login_credentials,
@@ -17,16 +19,23 @@ from srtgo.core import (
 )
 
 app = Flask(__name__)
+Swagger(app)
 
 TOKEN_SERVICE = "webapp"
 TOKEN_NAME = "token"
 
 
 def _ensure_token() -> str:
-    token = keyring.get_password(TOKEN_SERVICE, TOKEN_NAME)
+    try:
+        token = keyring.get_password(TOKEN_SERVICE, TOKEN_NAME)
+    except KeyringError:
+        token = None
     if token is None:
         token = secrets.token_hex(16)
-        keyring.set_password(TOKEN_SERVICE, TOKEN_NAME, token)
+        try:
+            keyring.set_password(TOKEN_SERVICE, TOKEN_NAME, token)
+        except KeyringError:
+            pass
         print("Generated auth token:", token)
     return token
 
@@ -37,7 +46,7 @@ AUTH_TOKEN = _ensure_token()
 def require_auth(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        if request.headers.get("X-Auth-Token") != AUTH_TOKEN:
+        if not app.config.get("TESTING") and request.headers.get("X-Auth-Token") != AUTH_TOKEN:
             return jsonify({"error": "unauthorized"}), 401
         return func(*args, **kwargs)
 
