@@ -4,7 +4,7 @@ Implements reservation viewing, cancellation, and refund like the original CLI
 """
 import asyncio
 from typing import List, Dict, Any, Optional
-from app.services.session_manager import session_manager
+from app.services.redis_session_manager import redis_session_manager
 from app.services.telegram_service import TelegramService
 from sqlmodel import Session
 
@@ -24,7 +24,7 @@ class ReservationManagementService:
         """
         try:
             # Get active session client
-            client = session_manager.get_session(user_key)
+            client = redis_session_manager.get_session(user_key)
             if not client:
                 return {
                     'success': False,
@@ -67,7 +67,7 @@ class ReservationManagementService:
         """
         try:
             # Get active session client
-            client = session_manager.get_session(user_key)
+            client = redis_session_manager.get_session(user_key)
             if not client:
                 return {
                     'success': False,
@@ -116,7 +116,7 @@ class ReservationManagementService:
         """
         try:
             # Get active session client
-            client = session_manager.get_session(user_key)
+            client = redis_session_manager.get_session(user_key)
             if not client:
                 return {
                     'success': False,
