@@ -115,8 +115,13 @@ export const settingsAPI = {
 
 // Reservations API
 export const reservationsAPI = {
-  getAll: (): Promise<AxiosResponse<Reservation[]>> =>
-    api.get('/reservations/'),
+  getAll: (params?: { status?: string; limit?: number | null }): Promise<AxiosResponse<Reservation[]>> => {
+    const queryParams = new URLSearchParams();
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.limit !== undefined && params.limit !== null) queryParams.append('limit', params.limit.toString());
+    const queryString = queryParams.toString();
+    return api.get(`/reservations/${queryString ? `?${queryString}` : ''}`);
+  },
 
   getById: (id: number): Promise<AxiosResponse<Reservation>> =>
     api.get(`/reservations/${id}/`),

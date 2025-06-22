@@ -40,10 +40,19 @@ const MonitorPage: React.FC = () => {
 
   const { isConnected } = useWebSocket({
     onMessage: (message: WebSocketMessage) => {
+      const timestamp = new Date().toLocaleTimeString();
+      let logMessage = `[${timestamp}] `;
+      
+      // Handle connection status messages - add to first line only
+      if (message.type === 'connection_status') {
+        if (message.status === 'connected') {
+          setLogs(prev => [`[${timestamp}] ${message.message}`, ...prev]);
+        }
+        return;
+      }
+      
+      // Only process reservation-specific messages for this reservation
       if (message.reservation_id?.toString() === id) {
-        const timestamp = new Date().toLocaleTimeString();
-        let logMessage = `[${timestamp}] `;
-        
         switch (message.type) {
           case 'reservation_update':
             logMessage += `상태 업데이트: ${message.message}`;
@@ -101,9 +110,18 @@ const MonitorPage: React.FC = () => {
     }
   };
 
-  const handleCancel = () => {
-    // TODO: Cancel reservation
-    console.log('Cancel reservation', id);
+  const handleCancel = async () => {
+    if (!id) return;
+    
+    if (window.confirm('정말로 예매를 중지하시겠습니까?')) {
+      try {
+        await reservationsAPI.cancel(parseInt(id));
+        refetch();
+      } catch (error) {
+        console.error('Failed to cancel reservation:', error);
+        alert('예매 중지에 실패했습니다.');
+      }
+    }
   };
 
   if (!reservation) {

@@ -1,8 +1,8 @@
-from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
-from sqlmodel import Session, select
+from typing import List, Dict, Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request, Query
+from sqlmodel import Session, select, desc
 from app.core.database import get_session
-from app.models import User, Reservation, ReservationCreate, ReservationRead, ReservationUpdate
+from app.models import User, Reservation, ReservationCreate, ReservationRead, ReservationUpdate, ReservationStatus
 from app.services.auth import get_current_user
 from app.services.reservation_management_service import ReservationManagementService
 from app.tasks.reservation import start_reservation_task
@@ -13,11 +13,29 @@ router = APIRouter()
 @router.get("/", response_model=List[ReservationRead])
 @router.get("", response_model=List[ReservationRead])
 def get_reservations(
+    status: Optional[str] = Query(None, description="Filter by status (pending, running, success, failed, cancelled)"),
+    limit: Optional[int] = Query(10, description="Number of results to return"),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
-    """Get all reservations for current user"""
+    """Get all reservations for current user with optional filtering and sorting"""
     statement = select(Reservation).where(Reservation.user_id == current_user.id)
+    
+    # Add status filter if provided
+    if status:
+        try:
+            status_enum = ReservationStatus(status)
+            statement = statement.where(Reservation.status == status_enum)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+    
+    # Order by created_at in descending order (most recent first)
+    statement = statement.order_by(desc(Reservation.created_at))
+    
+    # Apply limit if provided
+    if limit:
+        statement = statement.limit(limit)
+    
     reservations = session.exec(statement).all()
     return reservations
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Grid,
   Card,
@@ -15,6 +15,7 @@ import {
   TableRow,
   Paper,
   IconButton,
+  CardActionArea,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -29,12 +30,21 @@ import { Reservation, ReservationStatus } from '../types';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
+  const [statusFilter, setStatusFilter] = useState<ReservationStatus | null>(null);
 
   const { data: reservations, isLoading, refetch } = useQuery(
-    ['reservations'],
-    () => reservationsAPI.getAll().then(res => res.data),
+    ['reservations', statusFilter],
+    () => reservationsAPI.getAll(statusFilter ? { status: statusFilter, limit: null } : { limit: 10 }).then(res => res.data),
     {
       refetchInterval: 5000, // Refetch every 5 seconds
+    }
+  );
+
+  const { data: allReservations } = useQuery(
+    ['allReservations'],
+    () => reservationsAPI.getAll({ limit: null }).then(res => res.data),
+    {
+      refetchInterval: 5000,
     }
   );
 
@@ -73,10 +83,33 @@ const DashboardPage: React.FC = () => {
   };
 
   const stats = {
-    total: reservations?.length || 0,
-    running: reservations?.filter(r => r.status === 'running').length || 0,
-    success: reservations?.filter(r => r.status === 'success').length || 0,
-    failed: reservations?.filter(r => r.status === 'failed').length || 0,
+    total: allReservations?.length || 0,
+    running: allReservations?.filter(r => r.status === 'running').length || 0,
+    success: allReservations?.filter(r => r.status === 'success').length || 0,
+    failed: allReservations?.filter(r => r.status === 'failed').length || 0,
+  };
+
+  const handleStatusClick = (status: ReservationStatus | null) => {
+    console.log('handleStatusClick called with status:', status);
+    setStatusFilter(status);
+  };
+
+  const formatDateTime = (date: string, time: string) => {
+    if (!date || date.length < 8 || date.includes('-')) {
+      // If date is already formatted or invalid, return as is
+      return `${date || ''} ${time || ''}`.trim();
+    }
+    
+    // Format date from YYYYMMDD to YYYY-MM-DD
+    const formattedDate = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+    
+    // Format time from HHMMSS or HHMM to HH:MM
+    let formattedTime = '';
+    if (time && time.length >= 4) {
+      formattedTime = `${time.slice(0, 2)}:${time.slice(2, 4)}`;
+    }
+    
+    return `${formattedDate} ${formattedTime}`.trim();
   };
 
   return (
@@ -102,7 +135,20 @@ const DashboardPage: React.FC = () => {
       {/* Stats Cards */}
       <Grid container spacing={3} mb={4}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
+          <Card 
+            component="button"
+            sx={{ 
+              cursor: 'pointer',
+              border: 'none',
+              background: 'inherit',
+              width: '100%',
+              textAlign: 'left',
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.04)'
+              }
+            }}
+            onClick={() => handleStatusClick(null)}
+          >
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
                 전체 예매
@@ -114,7 +160,20 @@ const DashboardPage: React.FC = () => {
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
+          <Card 
+            component="button"
+            sx={{ 
+              cursor: 'pointer',
+              border: 'none',
+              background: 'inherit',
+              width: '100%',
+              textAlign: 'left',
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.04)'
+              }
+            }}
+            onClick={() => handleStatusClick('running')}
+          >
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
                 실행중
@@ -126,7 +185,20 @@ const DashboardPage: React.FC = () => {
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
+          <Card 
+            component="button"
+            sx={{ 
+              cursor: 'pointer',
+              border: 'none',
+              background: 'inherit',
+              width: '100%',
+              textAlign: 'left',
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.04)'
+              }
+            }}
+            onClick={() => handleStatusClick('success')}
+          >
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
                 성공
@@ -138,7 +210,20 @@ const DashboardPage: React.FC = () => {
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
+          <Card 
+            component="button"
+            sx={{ 
+              cursor: 'pointer',
+              border: 'none',
+              background: 'inherit',
+              width: '100%',
+              textAlign: 'left',
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.04)'
+              }
+            }}
+            onClick={() => handleStatusClick('failed')}
+          >
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
                 실패
@@ -155,7 +240,7 @@ const DashboardPage: React.FC = () => {
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            최근 예매 내역
+            {statusFilter ? `${getStatusLabel(statusFilter)} 예매 내역` : '최근 예매 내역'}
           </Typography>
           <TableContainer component={Paper} variant="outlined">
             <Table>
@@ -183,7 +268,7 @@ const DashboardPage: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  reservations?.slice(0, 10).map((reservation) => (
+                  reservations?.map((reservation) => (
                     <TableRow key={reservation.id}>
                       <TableCell>
                         <Chip
@@ -196,11 +281,7 @@ const DashboardPage: React.FC = () => {
                         {reservation.departure_station} → {reservation.arrival_station}
                       </TableCell>
                       <TableCell>
-                        {reservation.departure_date.slice(0, 4)}-
-                        {reservation.departure_date.slice(4, 6)}-
-                        {reservation.departure_date.slice(6, 8)}{' '}
-                        {reservation.departure_time.slice(0, 2)}:
-                        {reservation.departure_time.slice(2, 4)}
+                        {formatDateTime(reservation.departure_date, reservation.departure_time)}
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -211,7 +292,9 @@ const DashboardPage: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         {reservation.status === 'running'
-                          ? `${reservation.attempt_count}회 시도`
+                          ? `${reservation.attempt_count || 0}회 시도`
+                          : reservation.status === 'failed' && reservation.error_message
+                          ? `❌ ${reservation.error_message}`
                           : reservation.progress_message || '-'}
                       </TableCell>
                       <TableCell align="right">
