@@ -89,6 +89,30 @@ class ReservationService:
                 return train.has_general_seat()
             else:  # SPECIAL_ONLY
                 return train.has_special_seat()
+    
+    def _validate_reservation_success(self, reservation: Any) -> tuple[bool, str]:
+        """
+        원본 CLI와 동일한 예매 성공 검증 로직
+        Returns: (success: bool, message: str)
+        """
+        # 원본 CLI 방식: 티켓이 실제로 생성되었는지 확인
+        if hasattr(reservation, "tickets") and reservation.tickets:
+            return True, "실제 예매 성공 - 티켓 생성됨"
+        
+        # 예약대기 상태 확인
+        if hasattr(reservation, "is_waiting") and reservation.is_waiting:
+            return False, "예약대기 상태"
+        
+        # 기타 예약 관련 속성 확인
+        if hasattr(reservation, "paid") and not reservation.paid:
+            return False, "결제 대기 상태"
+        
+        # 예약 객체는 생성되었지만 티켓이 없는 경우
+        if reservation:
+            return False, "예약 생성됨 - 티켓 대기"
+        
+        # 예약 실패
+        return False, "예약 실패"
                 
     def _handle_reservation_error(self, ex: Exception, debug: bool = False) -> bool:
         """
@@ -259,18 +283,38 @@ class ReservationService:
                                     reservation = client.reserve(train, passengers=reservation_passengers, option=reserve_option)
                                     print(f"DEBUG: KTX reservation result: {reservation}")
                                 
-                                # Success!
-                                result = {
-                                    'success': True,
-                                    'reservation': reservation,
-                                    'train': train,
-                                    'message': f'예약 성공! {train.train_name} {train.train_number}'
-                                }
+                                # 원본 CLI와 동일한 예매 성공 검증
+                                success, status_message = self._validate_reservation_success(reservation)
                                 
-                                self._emit_progress('success', result['message'], reservation=reservation)
+                                if success:
+                                    # 실제 예매 성공 (티켓 생성됨)
+                                    msg = f"{reservation}"
+                                    if hasattr(reservation, "tickets") and reservation.tickets:
+                                        msg += "\n" + "\n".join(map(str, reservation.tickets))
+                                    
+                                    result = {
+                                        'success': True,
+                                        'reservation': reservation,
+                                        'train': train,
+                                        'message': f'🎫 🎉 예매 성공!!! 🎉 🎫\n{msg}',
+                                        'tickets': getattr(reservation, 'tickets', None),
+                                        'train_info': {
+                                            'train_name': getattr(train, 'train_name', ''),
+                                            'train_number': getattr(train, 'train_number', ''),
+                                            'departure_time': getattr(train, 'dep_time', ''),
+                                            'arrival_time': getattr(train, 'arr_time', ''),
+                                        }
+                                    }
+                                    
+                                    self._emit_progress('success', result['message'], reservation=reservation, tickets=result['tickets'])
+                                    
+                                else:
+                                    # 예약대기 또는 실패 - 계속 시도
+                                    self._emit_progress('waiting', f'{status_message} - 계속 시도 중...', reservation=reservation)
+                                    continue  # 예약대기인 경우 계속 시도
                                 
-                                # Auto-payment if enabled
-                                if auto_payment and not reservation.is_waiting:
+                                # Auto-payment if enabled and reservation is successful (not waiting)
+                                if auto_payment and not getattr(reservation, 'is_waiting', False):
                                     try:
                                         # Implement payment logic here
                                         self._emit_progress('paying', '자동 결제 중...')
@@ -281,6 +325,7 @@ class ReservationService:
                                     except Exception as pay_ex:
                                         self._emit_progress('warning', f'결제 실패: {str(pay_ex)}')
                                 
+                                # 실제 성공한 경우에만 종료
                                 self.is_running = False
                                 return result
                     
@@ -315,9 +360,9 @@ class ReservationService:
         return {'success': False, 'message': '예약이 중단되었습니다'}
     
     def _create_passengers(self, passengers) -> List[Any]:
-        """Create passenger objects based on rail type
+        """Create passenger objects based on rail type (원본 CLI 방식 적용)
         Args:
-            passengers: Either List[Dict[str, Any]] or List[str]
+            passengers: List[str] like ['Adult', 'Adult', 'Child']
         """
         passenger_objects = []
         
@@ -343,31 +388,20 @@ class ReservationService:
                 'disability4to6': Disability4To6Passenger
             }
         
-        # Handle both string list and dict list formats
-        if passengers and isinstance(passengers[0], str):
-            # Handle string list format: ['Adult', 'Adult', 'Child']
-            print("DEBUG: Processing string list format")
-            passenger_counts = {}
-            for passenger_str in passengers:
-                key = passenger_str.lower()
-                passenger_counts[key] = passenger_counts.get(key, 0) + 1
-            
-            print(f"DEBUG: Passenger counts: {passenger_counts}")
-            
-            for passenger_type, count in passenger_counts.items():
-                if count > 0 and passenger_type in passenger_classes:
-                    print(f"DEBUG: Creating {count} x {passenger_type}")
-                    passenger_objects.append(passenger_classes[passenger_type](count))
-                    
-        else:
-            # Handle dict list format: [{'type': 'adult', 'count': 2}]
-            print("DEBUG: Processing dict list format")
-            for passenger in passengers:
-                passenger_type = passenger.get('type', 'adult')
-                count = passenger.get('count', 1)
-                if count > 0 and passenger_type in passenger_classes:
-                    print(f"DEBUG: Creating {count} x {passenger_type}")
-                    passenger_objects.append(passenger_classes[passenger_type](count))
+        # 원본 CLI 방식: 승객 타입별로 카운트 후 각 타입당 하나의 객체 생성
+        # Handle string list format: ['Adult', 'Adult', 'Child'] -> {adult: 2, child: 1}
+        passenger_counts = {}
+        for passenger_str in passengers:
+            key = passenger_str.lower()
+            passenger_counts[key] = passenger_counts.get(key, 0) + 1
+        
+        print(f"DEBUG: Passenger counts: {passenger_counts}")
+        
+        # 원본 CLI와 동일하게 각 승객 타입당 하나의 객체 생성 (count 파라미터로 인원수 지정)
+        for passenger_type, count in passenger_counts.items():
+            if count > 0 and passenger_type in passenger_classes:
+                print(f"DEBUG: Creating single {passenger_type} object with count={count}")
+                passenger_objects.append(passenger_classes[passenger_type](count))
         
         print(f"DEBUG: Created passenger objects: {passenger_objects}")
         return passenger_objects
