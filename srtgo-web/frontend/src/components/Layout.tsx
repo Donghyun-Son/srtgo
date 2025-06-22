@@ -21,6 +21,7 @@ import {
   Settings,
   ExitToApp,
   Monitor,
+  ManageAccounts,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -42,6 +43,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const menuItems = [
     { text: '대시보드', icon: <Dashboard />, path: '/dashboard' },
     { text: '예매하기', icon: <Train />, path: '/reservation' },
+    { text: '예매 관리', icon: <ManageAccounts />, path: '/reservations' },
     { text: '설정', icon: <Settings />, path: '/settings' },
   ];
 

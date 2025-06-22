@@ -39,7 +39,14 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
       return;
     }
 
-    const wsUrl = `ws://localhost:8000/api/v1/ws/reservation/${user.id}`;
+    // Use proper WebSocket URL - connect through nginx proxy
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host; // includes port if present
+    const wsUrl = `${protocol}//${host}/api/v1/ws/reservation/${user.id}`;
+    
+    console.log('Connecting to WebSocket:', wsUrl);
+    console.log('Current location:', window.location);
+    console.log('User ID:', user.id);
     
     try {
       wsRef.current = new WebSocket(wsUrl);
@@ -87,6 +94,8 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
 
       wsRef.current.onerror = (error) => {
         console.error('WebSocket error:', error);
+        console.error('WebSocket URL was:', wsUrl);
+        setIsConnected(false);
         onError?.(error);
       };
 
@@ -125,7 +134,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
     return () => {
       disconnect();
     };
-  }, [isAuthenticated, user, connect, disconnect]);
+  }, [isAuthenticated, user]);
 
   return {
     isConnected,

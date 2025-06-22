@@ -10,7 +10,7 @@ import {
   ReservationCreate,
 } from '../types';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE_URL = ''; // Use nginx proxy, no need for external URL
 
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api/v1`,
@@ -28,14 +28,29 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor to handle auth errors
+// Response interceptor to handle auth errors and special cases
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    const errorData = error.response?.data;
+    const errorCode = errorData?.code;
+    
+    // Handle session expired
     if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      window.location.href = '/login';
+      if (errorCode === 'SESSION_EXPIRED' || errorCode === 'INVALID_CREDENTIALS') {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user_info');
+        localStorage.removeItem('rail_type');
+        window.location.href = '/login';
+      }
     }
+    
+    // Handle bot detection - show appropriate message but don't redirect
+    if (error.response?.status === 429 && errorCode === 'BOT_DETECTED') {
+      // Let the component handle this error message
+      return Promise.reject(error);
+    }
+    
     return Promise.reject(error);
   }
 );
@@ -49,6 +64,7 @@ export const authAPI = {
         const params = new URLSearchParams();
         params.append('username', data.username);
         params.append('password', data.password);
+        params.append('rail_type', data.rail_type);
         return params;
       }],
     }),
@@ -76,24 +92,43 @@ export const settingsAPI = {
 
   delete: (id: number): Promise<AxiosResponse<void>> =>
     api.delete(`/settings/${id}`),
+
+  getStations: (railType: string): Promise<AxiosResponse<{ stations: string[] }>> =>
+    api.get(`/settings/stations/${railType}`),
+
+  testLogin: (railType: string, data: { login_id: string; password: string }): Promise<AxiosResponse<{ success: boolean; message: string }>> =>
+    api.post(`/settings/${railType}/test-login`, data),
+
+  testTelegram: (railType: string, data: { token: string; chat_id: string }): Promise<AxiosResponse<{ success: boolean; message: string }>> =>
+    api.post(`/settings/${railType}/test-telegram`, data),
+
+  searchTrains: (railType: string, data: { 
+    departure: string; 
+    arrival: string; 
+    date: string; 
+    time?: string;
+    available_only?: boolean;
+    include_no_seats?: boolean;
+  }): Promise<AxiosResponse<{ success: boolean; trains?: any[]; message?: string }>> =>
+    api.post(`/settings/${railType}/search-trains`, data),
 };
 
 // Reservations API
 export const reservationsAPI = {
   getAll: (): Promise<AxiosResponse<Reservation[]>> =>
-    api.get('/reservations'),
+    api.get('/reservations/'),
 
   getById: (id: number): Promise<AxiosResponse<Reservation>> =>
-    api.get(`/reservations/${id}`),
+    api.get(`/reservations/${id}/`),
 
   create: (data: ReservationCreate): Promise<AxiosResponse<Reservation>> =>
-    api.post('/reservations', data),
+    api.post('/reservations/', data),
 
   update: (id: number, data: Partial<ReservationCreate>): Promise<AxiosResponse<Reservation>> =>
-    api.put(`/reservations/${id}`, data),
+    api.put(`/reservations/${id}/`, data),
 
   cancel: (id: number): Promise<AxiosResponse<void>> =>
-    api.delete(`/reservations/${id}`),
+    api.delete(`/reservations/${id}/`),
 };
 
 // Utility API

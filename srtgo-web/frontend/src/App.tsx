@@ -7,6 +7,7 @@ import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ReservationPage from './pages/ReservationPage';
+import ReservationManagementPage from './pages/ReservationManagementPage';
 import SettingsPage from './pages/SettingsPage';
 import MonitorPage from './pages/MonitorPage';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -26,6 +27,7 @@ function App() {
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/reservation" element={<ReservationPage />} />
+                    <Route path="/reservations" element={<ReservationManagementPage />} />
                     <Route path="/monitor/:id" element={<MonitorPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                   </Routes>

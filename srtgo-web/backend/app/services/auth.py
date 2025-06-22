@@ -8,6 +8,18 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.database import get_session
 from app.models import User, UserCreate
+from app.services.redis_session_manager import redis_session_manager as session_manager
+import sys
+import os
+
+# Add the parent directory to the path to import srtgo modules
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../../../..'))
+
+# Apply ConnectionError patch before importing srtgo
+try:
+    from app.srtgo_wrapper.connection_error_patch import *
+except Exception as e:
+    print(f"Warning: Could not apply ConnectionError patch: {e}")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token")
@@ -23,7 +35,10 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+# In-memory session store for credentials (in production, use Redis)
+_credential_cache = {}
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None, credentials: dict = None):
     """Create JWT access token"""
     to_encode = data.copy()
     if expires_delta:
@@ -33,13 +48,77 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
+    
+    # Cache credentials temporarily for the session
+    if credentials and data.get("sub"):
+        _credential_cache[data["sub"]] = {
+            "credentials": credentials,
+            "expires": expire
+        }
+    
     return encoded_jwt
+
+def get_cached_credentials(user_key: str) -> Optional[dict]:
+    """Get cached credentials for user"""
+    if user_key in _credential_cache:
+        cache_entry = _credential_cache[user_key]
+        if cache_entry["expires"] > datetime.utcnow():
+            return cache_entry["credentials"]
+        else:
+            # Clean up expired entries
+            del _credential_cache[user_key]
+    return None
 
 
 def get_user_by_username(session: Session, username: str) -> Optional[User]:
     """Get user by username"""
     statement = select(User).where(User.username == username)
     return session.exec(statement).first()
+
+
+def authenticate_user_with_external(username: str, password: str, rail_type: str) -> bool:
+    """Authenticate user with external SRT/KTX system and maintain session"""
+    try:
+        # 개발 환경에서 테스트 계정 허용
+        if settings.DEBUG and username == "test" and password == "test":
+            print(f"DEBUG: Allowing test account login for {rail_type}")
+            return True
+        
+        # Create user key for session management
+        user_key = f"{rail_type.lower()}_{username}"
+        
+        # Try to get existing session first
+        client = session_manager.get_session(user_key)
+        if client:
+            print(f"Using existing session for {username} ({rail_type})")
+            return True
+        
+        # Clear any corrupted session data before creating new one
+        session_manager.remove_session(user_key)
+        
+        # Create new session
+        client = session_manager.create_session(user_key, rail_type, username, password)
+        if client:
+            print(f"{rail_type} login successful for {username} - session created")
+            return True
+        else:
+            print(f"{rail_type} login failed for {username}")
+            return False
+        
+    except ImportError as e:
+        print(f"Import error: {e}")
+        # 개발 환경에서는 import 에러 시에도 테스트 계정 허용
+        if settings.DEBUG and username == "test" and password == "test":
+            print(f"DEBUG: Import error, but allowing test account")
+            return True
+        return False
+    except Exception as e:
+        print(f"Authentication error for {username}: {e}")
+        # 개발 환경에서는 에러 시에도 테스트 계정 허용
+        if settings.DEBUG and username == "test" and password == "test":
+            print(f"DEBUG: Auth error, but allowing test account")
+            return True
+        return False
 
 
 def authenticate_user(session: Session, username: str, password: str) -> Optional[User]:
@@ -87,15 +166,45 @@ async def get_current_user(
     
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        username: str = payload.get("sub")
-        if username is None:
+        user_key: str = payload.get("sub")  # This is like "srt_test" or "ktx_username"
+        username: str = payload.get("username")
+        rail_type: str = payload.get("rail_type")
+        
+        if user_key is None or username is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
     
-    user = get_user_by_username(session, username)
-    if user is None:
-        raise credentials_exception
+    # For SRT/KTX login, we don't store users in DB
+    # Create a temporary user object from JWT data with rail_type info
+    # Use a hash of username and rail_type as a unique ID
+    import hashlib
+    from datetime import datetime
+    
+    # Generate a unique ID based on username and rail_type
+    unique_string = f"{rail_type}_{username}"
+    user_id = int(hashlib.md5(unique_string.encode()).hexdigest()[:8], 16)
+    
+    user = User(
+        id=user_id,
+        username=username,
+        email=f"{username}@{rail_type.lower() if rail_type else 'srt'}.com",
+        hashed_password="",  # No password stored for external auth
+        is_active=True,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    # Store rail_type and user_key in the user object for access in routes
+    # Use object.__setattr__ to bypass Pydantic validation
+    object.__setattr__(user, 'rail_type', rail_type)
+    object.__setattr__(user, 'user_key', user_key)  # Store the JWT user_key
+    object.__setattr__(user, 'credentials', {'login_id': username, 'rail_type': rail_type})
+    
+    # Get session info if available
+    session_info = session_manager.get_session_info(user_key)
+    if session_info:
+        object.__setattr__(user, 'session_info', session_info)
+    
     return user
 
 

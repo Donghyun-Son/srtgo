@@ -2,8 +2,13 @@ import sys
 import os
 from typing import Dict, List, Optional
 
-# Add original srtgo module to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../../../srtgo'))
+# Add srtgo modules to path
+# Check if running in Docker (with /app/srtgo path)
+if os.path.exists('/app/srtgo'):
+    sys.path.append('/app')
+else:
+    # Local development path
+    sys.path.append(os.path.join(os.path.dirname(__file__), '../../../../srtgo'))
 
 try:
     from srtgo.srtgo import STATIONS, DEFAULT_STATIONS

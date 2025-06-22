@@ -1,3 +1,23 @@
+# Development stage
+FROM node:18-alpine as development
+
+WORKDIR /app
+
+# Copy package.json and package-lock.json (if available)
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 3000
+
+# Start development server
+CMD ["npm", "start"]
+
 # Build stage
 FROM node:18-alpine as build
 

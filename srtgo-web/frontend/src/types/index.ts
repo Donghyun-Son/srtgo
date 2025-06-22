@@ -1,3 +1,5 @@
+export type RailType = 'SRT' | 'KTX';
+
 export interface User {
   id: number;
   username: string;
@@ -10,6 +12,7 @@ export interface User {
 export interface LoginRequest {
   username: string;
   password: string;
+  rail_type: RailType;
 }
 
 export interface RegisterRequest {
@@ -22,8 +25,6 @@ export interface TokenResponse {
   access_token: string;
   token_type: string;
 }
-
-export type RailType = 'SRT' | 'KTX';
 
 export interface UserSettings {
   id: number;
@@ -53,6 +54,7 @@ export interface UserSettings {
 }
 
 export interface UserSettingsCreate {
+  user_id?: number;
   rail_type: RailType;
   login_id?: string;
   encrypted_password?: string;
@@ -113,17 +115,23 @@ export interface ReservationCreate {
 }
 
 export interface Train {
-  id: string;
-  name: string;
+  id?: string;
+  train_name: string;
+  train_no: string;
   departure_time: string;
   arrival_time: string;
   departure_station: string;
   arrival_station: string;
-  travel_time: string;
-  general_available: boolean;
-  special_available: boolean;
+  travel_time?: string;
+  general_seat_available: boolean;
+  special_seat_available: boolean;
   waiting_available: boolean;
-  price: number;
+  reservation_possible?: boolean;
+  general_seat_state: string;
+  special_seat_state: string;
+  bookable: boolean;
+  sold_out: boolean;
+  price?: number;
 }
 
 export interface Station {

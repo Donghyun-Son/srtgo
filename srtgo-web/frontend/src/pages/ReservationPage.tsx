@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -15,6 +15,7 @@ import { useMutation } from 'react-query';
 import { useSnackbar } from 'notistack';
 import { reservationsAPI } from '../services/api';
 import { ReservationCreate } from '../types';
+import { useAuth } from '../hooks/useAuth';
 
 // Step components (to be implemented)
 import BasicInfoStep from '../components/reservation/BasicInfoStep';
@@ -30,10 +31,18 @@ const steps = [
 ];
 
 const ReservationPage: React.FC = () => {
+  const { railType } = useAuth();
   const [activeStep, setActiveStep] = useState(0);
   const [reservationData, setReservationData] = useState<Partial<ReservationCreate>>({});
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
+
+  // Set initial rail_type from auth context
+  useEffect(() => {
+    if (railType && !reservationData.rail_type) {
+      setReservationData(prev => ({ ...prev, rail_type: railType as any }));
+    }
+  }, [railType, reservationData.rail_type]);
 
   const createReservationMutation = useMutation(
     (data: ReservationCreate) => reservationsAPI.create(data),
@@ -54,6 +63,7 @@ const ReservationPage: React.FC = () => {
       setActiveStep(prev => prev + 1);
     } else {
       // Final step - create reservation
+      console.log('Creating reservation with data:', reservationData);
       createReservationMutation.mutate(reservationData as ReservationCreate);
     }
   };

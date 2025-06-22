@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Redis for development
   redis:
@@ -12,12 +10,13 @@ services:
   # Backend development server
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./srtgo-web/backend/Dockerfile
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
+      - ./srtgo-web/backend:/app
+      - ./srtgo:/app/srtgo
       - backend_dev_data:/app/data
     environment:
       - DATABASE_URL=sqlite:///./data/srtgo_web.db
@@ -27,6 +26,8 @@ services:
       - SECRET_KEY=dev-secret-key-not-for-production
       - DEBUG=true
       - BACKEND_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+      - SRT_ID=1880400249
+      - SRT_PW=Ehdgusdk1!
     depends_on:
       - redis
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -34,10 +35,11 @@ services:
   # Celery worker for development
   celery:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./srtgo-web/backend/Dockerfile
     volumes:
-      - ./backend:/app
+      - ./srtgo-web/backend:/app
+      - ./srtgo:/app/srtgo
       - backend_dev_data:/app/data
     environment:
       - DATABASE_URL=sqlite:///./data/srtgo_web.db
@@ -45,10 +47,30 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - SECRET_KEY=dev-secret-key-not-for-production
+      - DEBUG=true
+      - SRT_ID=1880400249
+      - SRT_PW=Ehdgusdk1!
     depends_on:
       - redis
       - backend
     command: celery -A app.tasks.celery_app worker --loglevel=info
+
+  # Frontend development server
+  frontend:
+    build:
+      context: ./srtgo-web/frontend
+      dockerfile: Dockerfile
+      target: development
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./srtgo-web/frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
 
 volumes:
   redis_dev_data:

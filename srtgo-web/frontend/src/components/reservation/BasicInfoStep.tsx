@@ -7,11 +7,14 @@ import {
   MenuItem,
   TextField,
   Typography,
+  Chip,
+  Box,
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs, { Dayjs } from 'dayjs';
+import { useAuth } from '../../hooks/useAuth';
 import 'dayjs/locale/ko';
 
 dayjs.locale('ko');
@@ -33,6 +36,7 @@ const timeOptions = Array.from({ length: 24 }, (_, i) => ({
 }));
 
 const BasicInfoStep: React.FC<BasicInfoStepProps> = ({ data, onDataChange }) => {
+  const { railType } = useAuth();
   const [selectedDate, setSelectedDate] = React.useState<Dayjs | null>(
     data.departure_date ? dayjs(data.departure_date, 'YYYYMMDD') : dayjs().add(1, 'day')
   );
@@ -59,17 +63,32 @@ const BasicInfoStep: React.FC<BasicInfoStepProps> = ({ data, onDataChange }) => 
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
-          <FormControl fullWidth>
-            <InputLabel>열차 종류</InputLabel>
-            <Select
-              value={data.rail_type || ''}
-              label="열차 종류"
-              onChange={(e) => handleChange('rail_type', e.target.value)}
-            >
-              <MenuItem value="SRT">SRT</MenuItem>
-              <MenuItem value="KTX">KTX</MenuItem>
-            </Select>
-          </FormControl>
+          {railType ? (
+            <Box>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                열차 종류
+              </Typography>
+              <Chip 
+                label={`${railType} (로그인 시 선택됨)`}
+                color={railType === 'SRT' ? 'secondary' : 'primary'}
+                variant="outlined"
+                size="medium"
+                sx={{ height: 40 }}
+              />
+            </Box>
+          ) : (
+            <FormControl fullWidth>
+              <InputLabel>열차 종류</InputLabel>
+              <Select
+                value={data.rail_type || ''}
+                label="열차 종류"
+                onChange={(e) => handleChange('rail_type', e.target.value)}
+              >
+                <MenuItem value="SRT">SRT</MenuItem>
+                <MenuItem value="KTX">KTX</MenuItem>
+              </Select>
+            </FormControl>
+          )}
         </Grid>
 
         <Grid item xs={12} md={6}>

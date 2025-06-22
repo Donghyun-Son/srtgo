@@ -52,8 +52,26 @@ class Reservation(ReservationBase, table=True):
     completed_at: Optional[datetime] = None
 
 
-class ReservationCreate(ReservationBase):
-    pass
+class ReservationCreate(SQLModel):
+    """Model for creating reservations via API (user_id is set automatically)"""
+    # Train information
+    rail_type: str  # "SRT" or "KTX"
+    departure_station: str
+    arrival_station: str
+    departure_date: str  # YYYYMMDD
+    departure_time: str  # HHMMSS
+    
+    # Passenger information
+    passengers: dict = Field(default_factory=dict)  # {"adult": 1, "child": 0, ...}
+    
+    # Seat preferences
+    seat_type: str  # "GENERAL_FIRST", "GENERAL_ONLY", "SPECIAL_FIRST", "SPECIAL_ONLY"
+    
+    # Selected trains
+    selected_trains: list[int] = Field(default_factory=list)  # Train indices
+    
+    # Reservation options
+    auto_payment: bool = False
 
 
 class ReservationRead(ReservationBase):
