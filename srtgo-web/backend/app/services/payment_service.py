@@ -3,7 +3,7 @@ Payment Service for Auto-Payment Integration
 Implements credit card payment functionality like the original CLI
 """
 from typing import Optional, Dict, Any
-from app.services.session_manager import session_manager
+from app.services.redis_session_manager import redis_session_manager as session_manager
 from app.models import UserSettings
 from app.services.settings import SettingsService
 from sqlmodel import Session

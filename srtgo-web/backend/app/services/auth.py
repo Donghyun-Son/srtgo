@@ -35,9 +35,6 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-# In-memory session store for credentials (in production, use Redis)
-_credential_cache = {}
-
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None, credentials: dict = None):
     """Create JWT access token"""
     to_encode = data.copy()
@@ -49,24 +46,19 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None, c
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
     
-    # Cache credentials temporarily for the session
-    if credentials and data.get("sub"):
-        _credential_cache[data["sub"]] = {
-            "credentials": credentials,
-            "expires": expire
-        }
+    # Note: Credentials are now stored in Redis via RedisSessionManager during login
+    # No need for in-memory caching
     
     return encoded_jwt
 
 def get_cached_credentials(user_key: str) -> Optional[dict]:
-    """Get cached credentials for user"""
-    if user_key in _credential_cache:
-        cache_entry = _credential_cache[user_key]
-        if cache_entry["expires"] > datetime.utcnow():
-            return cache_entry["credentials"]
-        else:
-            # Clean up expired entries
-            del _credential_cache[user_key]
+    """Get cached credentials for user from Redis session manager"""
+    session_info = session_manager.get_session_info(user_key)
+    if session_info:
+        return {
+            "login_id": session_info.get("username"),
+            "password": session_info.get("password")
+        }
     return None
 
 

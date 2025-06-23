@@ -55,7 +55,7 @@ interface ReservationItem {
     seat?: string;
     seat_type?: string;
   }>;
-  raw_data: any;
+  serializable_data: any;
 }
 
 const ReservationManagementPage: React.FC = () => {
@@ -104,7 +104,8 @@ const ReservationManagementPage: React.FC = () => {
     setActionLoading(`cancel_${reservation.id}`);
     
     try {
-      const response = await api.post(`/reservations/cancel/${railType}`, reservation.raw_data);
+      // Send the entire reservation object for proper matching
+      const response = await api.post(`/reservations/cancel/${railType}`, reservation);
       if (response.data.success) {
         await fetchReservations(); // Refresh list
         setConfirmDialog({ ...confirmDialog, open: false });
@@ -122,7 +123,8 @@ const ReservationManagementPage: React.FC = () => {
     setActionLoading(`pay_${reservation.id}`);
     
     try {
-      const response = await api.post(`/reservations/pay/${railType}`, reservation.raw_data);
+      // Send the entire reservation object for proper matching
+      const response = await api.post(`/reservations/pay/${railType}`, reservation);
       if (response.data.success) {
         await fetchReservations(); // Refresh list
       } else {

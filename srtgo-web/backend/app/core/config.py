@@ -29,12 +29,6 @@ class Settings(BaseSettings):
     # WebSocket
     WS_HEARTBEAT_INTERVAL: int = 30
     
-    # Real SRT/KTX account credentials for testing
-    SRT_ID: Optional[str] = None
-    SRT_PW: Optional[str] = None
-    KTX_ID: Optional[str] = None  
-    KTX_PW: Optional[str] = None
-    
     class Config:
         env_file = ".env"
         case_sensitive = True

@@ -228,6 +228,23 @@ def start_reservation_task(self, reservation_id: int):
             
             session.add(reservation)
             session.commit()
+            
+            # Ensure result is JSON serializable before returning to Celery
+            try:
+                import json
+                json.dumps(result)
+                print(f"Celery task result JSON serialization test passed")
+            except Exception as json_error:
+                print(f"ERROR: Celery task result is not JSON serializable: {json_error}")
+                print(f"Result type: {type(result)}")
+                print(f"Result keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+                # Return a safe fallback
+                result = {
+                    "success": result.get("success", False) if isinstance(result, dict) else False,
+                    "message": "직렬화 오류로 인해 상세 정보가 제한됩니다",
+                    "error": "JSON serialization failed"
+                }
+            
             return result
             
         except Exception as e:

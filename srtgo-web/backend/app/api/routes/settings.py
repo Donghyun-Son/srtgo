@@ -238,53 +238,9 @@ def search_trains(
                     }
                     print(f"DEBUG: credentials from session = {credentials}")
                 else:
-                    # Try to recreate session from JWT token data (development only)
-                    from app.core.config import settings
-                    if settings.DEBUG:
-                        # In development, try to get credentials from JWT token
-                        from fastapi import Request
-                        from fastapi.security import OAuth2PasswordBearer
-                        from jose import jwt
-                        
-                        # Get current request to extract token
-                        # This is a workaround - in production, use proper session management
-                        try:
-                            # For now, try to recreate session using .env credentials (DEV ONLY)
-                            print(f"DEBUG: No session found, trying to recreate session for {user_key}")
-                            print(f"DEBUG: Current user: username={current_user.username}, rail_type={getattr(current_user, 'rail_type', None)}")
-                            
-                            import os
-                            srt_id = os.getenv("SRT_ID")
-                            srt_pw = os.getenv("SRT_PW") 
-                            
-                            print(f"DEBUG: .env SRT_ID = '{srt_id}'")
-                            print(f"DEBUG: current_user.username = '{current_user.username}'")
-                            print(f"DEBUG: srt_pw present = {bool(srt_pw)}")
-                            print(f"DEBUG: credentials match = {current_user.username == srt_id}")
-                            
-                            if srt_id and srt_pw and current_user.username == srt_id:
-                                print(f"DEBUG: Attempting to recreate session with .env credentials")
-                                from app.services.redis_session_manager import redis_session_manager as session_manager
-                                client = session_manager.create_session(user_key, rail_type, srt_id, srt_pw)
-                                if client:
-                                    print(f"DEBUG: Successfully recreated session for {user_key}")
-                                    credentials = {"login_id": srt_id, "password": srt_pw}
-                                else:
-                                    print(f"DEBUG: Failed to recreate session")
-                                    from app.core.error_handler import SessionExpiredException
-                                    raise SessionExpiredException("세션 재생성에 실패했습니다. 다시 로그인해주세요.")
-                            else:
-                                print(f"DEBUG: Cannot recreate session - credentials mismatch or missing")
-                                from app.core.error_handler import SessionExpiredException
-                                raise SessionExpiredException("세션이 만료되었습니다. 다시 로그인해주세요.")
-                        except Exception as e:
-                            print(f"DEBUG: Error in session recreation attempt: {e}")
-                            from app.core.error_handler import SessionExpiredException
-                            raise SessionExpiredException("세션이 만료되었습니다. 다시 로그인해주세요.")
-                    else:
-                        # Session expired or not found - ask user to re-login
-                        from app.core.error_handler import SessionExpiredException
-                        raise SessionExpiredException("세션이 만료되었습니다. 다시 로그인해주세요.")
+                    # Session expired or not found - ask user to re-login
+                    from app.core.error_handler import SessionExpiredException
+                    raise SessionExpiredException("세션이 만료되었습니다. 다시 로그인해주세요.")
         
         departure = search_data.departure
         arrival = search_data.arrival

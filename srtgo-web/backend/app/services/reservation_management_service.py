@@ -58,6 +58,126 @@ class ReservationManagementService:
                 'message': f'예약 조회 중 오류: {str(e)}'
             }
     
+    def _make_serializable(self, obj: Any) -> Dict[str, Any]:
+        """
+        Convert object to JSON-serializable dictionary
+        """
+        try:
+            import json
+            
+            # Try direct JSON serialization first
+            json.dumps(obj)
+            return obj
+        except (TypeError, ValueError):
+            # Object is not directly serializable, extract safe attributes
+            safe_data = {}
+            
+            # Basic Python types that are JSON serializable
+            safe_types = (str, int, float, bool, type(None))
+            
+            if hasattr(obj, '__dict__'):
+                for key, value in obj.__dict__.items():
+                    try:
+                        if isinstance(value, safe_types):
+                            safe_data[key] = value
+                        elif isinstance(value, (list, tuple)):
+                            # Handle lists/tuples recursively
+                            safe_data[key] = [self._make_serializable(item) for item in value]
+                        elif isinstance(value, dict):
+                            # Handle dictionaries recursively  
+                            safe_data[key] = {k: self._make_serializable(v) for k, v in value.items()}
+                        else:
+                            # For complex objects, try to convert to simple types
+                            try:
+                                # Test JSON serialization first
+                                import json
+                                json.dumps(value)
+                                safe_data[key] = value
+                            except (TypeError, ValueError):
+                                # If not serializable, convert to string
+                                safe_data[key] = str(value)
+                    except Exception:
+                        # If any error, just skip this attribute
+                        continue
+            else:
+                # If no __dict__, just convert to string
+                safe_data = {'__str__': str(obj)}
+                
+            return safe_data
+    
+    def _find_reservation_object(self, client, reservation_data: Dict[str, Any], rail_type: str):
+        """
+        Find the actual reservation object that matches the reservation data
+        This is needed because cancel/refund methods expect the original library objects
+        """
+        try:
+            # Get fresh reservation data
+            if rail_type == "SRT":
+                reservations = client.get_reservations()
+                tickets = []  # SRT includes tickets in reservations
+            else:  # KTX
+                reservations = client.reservations()
+                tickets = client.tickets()
+            
+            # Look for matching reservation in fresh data
+            # Use unique_id and serializable_data to match, fallback to description
+            target_unique_id = reservation_data.get('unique_id')
+            target_serializable = reservation_data.get('serializable_data', {})
+            target_description = reservation_data.get('description', '')
+            
+            # If no unique_id in reservation_data, try to extract from serializable_data or top-level
+            if not target_unique_id:
+                if rail_type == "SRT":
+                    target_unique_id = target_serializable.get('reservation_number') or reservation_data.get('reservation_number')
+                elif rail_type == "KTX":
+                    target_unique_id = target_serializable.get('rsv_id') or target_serializable.get('pnr_no') or \
+                                     reservation_data.get('rsv_id') or reservation_data.get('pnr_no')
+            
+            # Search in tickets first (paid items)
+            for ticket in tickets:
+                # Try unique ID matching first
+                if target_unique_id and hasattr(ticket, 'pnr_no') and ticket.pnr_no == target_unique_id:
+                    return ticket
+                if target_unique_id and hasattr(ticket, 'rsv_id') and ticket.rsv_id == target_unique_id:
+                    return ticket
+                    
+                # Fallback to description matching
+                if str(ticket) == target_description:
+                    return ticket
+                    
+                # Try serializable data matching for additional fields
+                if hasattr(ticket, 'pnr_no') and target_serializable.get('pnr_no'):
+                    if ticket.pnr_no == target_serializable.get('pnr_no'):
+                        return ticket
+            
+            # Search in reservations
+            for reservation in reservations:
+                # Try unique ID matching first
+                if target_unique_id:
+                    if rail_type == "SRT" and hasattr(reservation, 'reservation_number'):
+                        if reservation.reservation_number == target_unique_id:
+                            return reservation
+                    elif rail_type == "KTX" and hasattr(reservation, 'rsv_id'):
+                        if reservation.rsv_id == target_unique_id:
+                            return reservation
+                
+                # Fallback to description matching
+                if str(reservation) == target_description:
+                    return reservation
+                    
+                # Try serializable data matching for additional fields
+                if rail_type == "SRT" and hasattr(reservation, 'reservation_number'):
+                    if target_serializable.get('reservation_number') == reservation.reservation_number:
+                        return reservation
+                elif rail_type == "KTX" and hasattr(reservation, 'rsv_id'):
+                    if target_serializable.get('rsv_id') == reservation.rsv_id:
+                        return reservation
+            
+            return None
+            
+        except Exception as e:
+            return None
+    
     def cancel_reservation(self, 
                           user_key: str, 
                           rail_type: str, 
@@ -77,14 +197,29 @@ class ReservationManagementService:
             
             # Determine if this is a ticket (paid) or reservation (unpaid)
             is_ticket = reservation_data.get('is_ticket', False)
+            rail_type = rail_type.upper()
+            
+            # Find the actual reservation object from current reservations
+            actual_reservation = self._find_reservation_object(client, reservation_data, rail_type)
+            if not actual_reservation:
+                return {
+                    'success': False,
+                    'error': 'Reservation not found',
+                    'message': '예약을 찾을 수 없습니다. 페이지를 새로고침 후 다시 시도해주세요.'
+                }
             
             if is_ticket:
                 # Refund ticket
-                result = client.refund(reservation_data)
+                result = client.refund(actual_reservation)
                 action = "환불"
             else:
                 # Cancel reservation
-                result = client.cancel(reservation_data)
+                if rail_type == "SRT":
+                    # SRT accepts either reservation object or reservation number
+                    result = client.cancel(actual_reservation)
+                else:
+                    # KTX requires reservation object
+                    result = client.cancel(actual_reservation)
                 action = "취소"
             
             if result:
@@ -201,8 +336,16 @@ class ReservationManagementService:
         Format a single reservation/ticket for API response
         """
         try:
+            # Extract unique identifiers for better matching
+            unique_id = None
+            if rail_type == "SRT":
+                unique_id = getattr(reservation, 'reservation_number', None)
+            elif rail_type == "KTX":
+                unique_id = getattr(reservation, 'rsv_id', None) or getattr(reservation, 'pnr_no', None)
+            
             formatted = {
                 'id': getattr(reservation, 'id', None),
+                'unique_id': unique_id,
                 'is_ticket': is_ticket,
                 'status': 'paid' if is_ticket else 'unpaid',
                 'rail_type': rail_type,
@@ -216,7 +359,7 @@ class ReservationManagementService:
                 'price': getattr(reservation, 'price', None),
                 'passenger_count': getattr(reservation, 'passenger_count', None),
                 'seat_info': [],
-                'raw_data': reservation  # Store raw object for operations
+                'serializable_data': self._make_serializable(reservation)
             }
             
             # Add ticket details if available
@@ -240,5 +383,5 @@ class ReservationManagementService:
                 'rail_type': rail_type,
                 'description': str(reservation),
                 'error': f'Formatting error: {str(e)}',
-                'raw_data': reservation
+                'serializable_data': self._make_serializable(reservation)
             }
