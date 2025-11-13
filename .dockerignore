@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Frontend (will be built in Docker)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Backend
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+backend/srtgo.db
+backend/data/
+
+# Logs
+*.log
+
+# Analysis documents
+ANALYSIS_INDEX.md
+INQUIRY_ANALYSIS.txt
+INQUIRY_USAGE_MAP.txt
+MIGRATION_PLAN.md
+WEB_MIGRATION_GUIDE.md
+TESTING_REPORT.md
