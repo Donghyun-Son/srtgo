@@ -1,0 +1,220 @@
+================================================================================
+                     INQUIRER USAGE VISUAL MAP
+================================================================================
+
+APPLICATION FLOW WITH INQUIRER COMPONENTS:
+───────────────────────────────────────────
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                MAIN LOOP                                     │
+│                         srtgo() [Lines 131-184]                             │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │ inquirer.list_input()                                                │  │
+│  │ Message: "메뉴 선택 (↕:이동, Enter: 선택)"                          │  │
+│  │ Choices: 9 menu options (1-8, -1)                                   │  │
+│  │                                                                       │  │
+│  │  1. 예매 시작 ──────────────────────────────────┐                   │  │
+│  │  2. 예매 확인/결제/취소 ───────────────────────┼────┐               │  │
+│  │  3. 로그인 설정 ────────────────────────────────┼────┼────┐         │  │
+│  │  4. 텔레그램 설정 ──────────────────────────────┼────┼────┼──┐      │  │
+│  │  5. 카드 설정 ──────────────────────────────────┼────┼────┼──┼──┐   │  │
+│  │  6. 역 설정 ────────────────────────────────────┼────┼────┼──┼──┼─┐ │  │
+│  │  7. 역 직접 수정 ──────────────────────────────┼────┼────┼──┼──┼─┼─┐ │  │
+│  │  8. 예매 옵션 설정 ───────────────────────────┼────┼────┼──┼──┼─┼─┼─┐ │ │
+│  │  9. 나가기 ───────────────────────────────────┘    │    │  │  │ │ │ │ │ │
+│  └──────────────────────────────────────────────────────┼────┼──┼──┼─┼─┼─┼─┘ │
+│                                                         │    │  │  │ │ │ │    │
+└─────────────────────────────────────────────────────────┼────┼──┼──┼─┼─┼─┼────┘
+                                                          │    │  │  │ │ │ │
+                    ┌─────────────────────────────────────┘    │  │  │ │ │ │
+                    │                                          │  │  │ │ │ │
+        ┌───────────▼──────────────┐                          │  │  │ │ │ │
+        │  reserve() [447-782]     │                          │  │  │ │ │ │
+        │                          │                          │  │  │ │ │ │
+        │ inquirer.list_input() ──┐                          │  │  │ │ │ │
+        │ (Rail Type Selection)   │                          │  │  │ │ │ │
+        │                          │                          │  │  │ │ │ │
+        │ ┌──────────────────────┐│                          │  │  │ │ │ │
+        │ │inquirer.prompt()──┐  ││                          │  │  │ │ │ │
+        │ │[Complex Form]     │  ││                          │  │  │ │ │ │
+        │ │                   │  ││                          │  │  │ │ │ │
+        │ │ inquirer.List()───┼──┼┼─ Departure             │  │  │ │ │ │
+        │ │ inquirer.List()───┼──┼┼─ Arrival               │  │  │ │ │ │
+        │ │ inquirer.List()───┼──┼┼─ Date (Choices: 29-31) │  │  │ │ │ │
+        │ │ inquirer.List()───┼──┼┼─ Time (00-23)          │  │  │ │ │ │
+        │ │ inquirer.List()───┼──┼┼─ Adult Count (0-9)     │  │  │ │ │ │
+        │ │ inquirer.List()───┼──┼┼─ Optional Passengers   │  │  │ │ │ │
+        │ └───────────┬────────┘  ││                        │  │  │ │ │ │
+        │             │            ││                        │  │  │ │ │ │
+        │ ┌───────────▼─────────┐  ││                        │  │  │ │ │ │
+        │ │inquirer.Checkbox()  │◄─┘│                        │  │  │ │ │ │
+        │ │Train Selection      │   │                        │  │  │ │ │ │
+        │ └─────────────────────┘   │                        │  │  │ │ │ │
+        │                            │                        │  │  │ │ │ │
+        │ ┌────────────────────────┐ │                        │  │  │ │ │ │
+        │ │inquirer.prompt()       │◄┘                        │  │  │ │ │ │
+        │ │[Seat Type + Payment]   │                         │  │  │ │ │ │
+        │ │                        │                         │  │  │ │ │ │
+        │ │inquirer.List()─────────┼─ Seat Type             │  │  │ │ │ │
+        │ │inquirer.Confirm()──────┼─ Pay with Card?        │  │  │ │ │ │
+        │ └────────────────────────┘                         │  │  │ │ │ │
+        │                                                     │  │  │ │ │ │
+        │ ┌────────────────────────┐                         │  │  │ │ │ │
+        │ │Polling Loop [700-782]  │                         │  │  │ │ │ │
+        │ │                        │                         │  │  │ │ │ │
+        │ │inquirer.confirm()──────┼─ Continue? (on error)   │  │  │ │ │ │
+        │ └────────────────────────┘                         │  │  │ │ │ │
+        └────────────────────────────────────────────────────┼──┼──┼──┼─┼───┘
+                                                             │  │  │  │ │
+        ┌────────────────────────────────────────────────────┘  │  │  │ │
+        │                                                       │  │  │ │
+        │    ┌──────────────────────────────────────────────────┘  │  │ │
+        │    │                                                     │  │ │
+        │    │    ┌─────────────────────────────────────────────────┘  │ │
+        │    │    │                                                    │ │
+        │    │    │    ┌───────────────────────────────────────────────┘ │
+        │    │    │    │                                                 │
+        │    │    │    │    ┌────────────────────────────────────────────┘
+        │    │    │    │    │
+   ┌────▼────▼────▼────▼────▼─────────────┐
+   │ check_reservation() [822-902]        │
+   │                                       │
+   │ ┌─────────────────────────────────┐  │
+   │ │inquirer.list_input()            │  │
+   │ │Message: "예약 취소"              │  │
+   │ │Choices: Reservations list       │  │
+   │ └─────────────────────────────────┘  │
+   │                                       │
+   │ ┌─────────────────────────────────┐  │
+   │ │inquirer.list_input()            │  │
+   │ │(For unpaid reservation actions) │  │
+   │ │Choices: Pay / Cancel            │  │
+   │ └─────────────────────────────────┘  │
+   │                                       │
+   │ ┌─────────────────────────────────┐  │
+   │ │inquirer.confirm()               │  │
+   │ │"정말 취소하시겠습니까"           │  │
+   │ └─────────────────────────────────┘  │
+   └───────────────────────────────────────┘
+            │   │   │   │   │
+            │   │   │   │   └─ Telegram Settings
+            │   │   │   └───── Card Settings
+            │   │   └───────── Login Settings
+            │   └───────────── Station Edit
+            └───────────────── Station Multi-Select
+
+
+SETTINGS FLOWS:
+───────────────
+
+set_station()           set_options()           set_telegram()
+[186-211]               [260-288]               [291-325]
+│                       │                       │
+inquirer.Checkbox()     inquirer.Checkbox()     inquirer.prompt()
+"역 선택"                "예매 옵션 선택"        │
+(Stations)              (Passenger Types)       ├─ inquirer.Text()
+                                                │  "텔레그램 token"
+edit_station()                                  │
+[214-246]                                       └─ inquirer.Text()
+│                                                  "텔레그램 chat_id"
+inquirer.Text()         set_card()
+"역 수정"                [340-376]
+(Free text input)       
+                        inquirer.prompt()
+                        ├─ inquirer.Password()
+                        │  "신용카드 번호"
+                        ├─ inquirer.Password()
+                        │  "카드 비밀번호"
+                        ├─ inquirer.Password()
+                        │  "생년월일"
+                        └─ inquirer.Password()
+                           "카드 유효기간"
+
+
+set_login()
+[393-431]
+
+inquirer.prompt()
+├─ inquirer.Text()
+│  "계정 아이디"
+└─ inquirer.Password()
+   "계정 패스워드"
+
+
+================================================================================
+                        COMPONENT COUNT SUMMARY
+================================================================================
+
+inquirer.list_input()          3 uses
+inquirer.Checkbox()            3 components
+inquirer.Text()                6 components
+inquirer.Password()            5 components
+inquirer.List()                6 components
+inquirer.Confirm()             2+ uses
+inquirer.prompt()              7 calls (containing ~20 sub-components)
+                               ──────────────────────────
+TOTAL PROMPT ELEMENTS:         ~30+
+
+Most Complex Form: Reserve wizard (~11 fields submitted via 3 inquirer.prompt() calls)
+
+================================================================================
+                        KEY INTERACTION PATTERNS
+================================================================================
+
+Pattern 1: SINGLE SELECTION (list_input)
+  Used: Main menu, Rail type, Reservation actions
+  → Replace with: Dropdown or Radio button group
+
+Pattern 2: MULTI-SELECTION CHECKBOX
+  Used: Train selection, Station selection, Options selection
+  → Replace with: Multi-select with checkboxes + "Select All" button
+
+Pattern 3: SEQUENTIAL FORM (prompt with multiple fields)
+  Used: All settings, Reservation details
+  → Replace with: Multi-step wizard or form sections
+
+Pattern 4: CONFIRMATION (Confirm)
+  Used: Delete/Cancel operations, Continue on error
+  → Replace with: Modal dialog with Yes/No buttons
+
+Pattern 5: PASSWORD MASKING
+  Used: Card settings, Login credentials
+  → Replace with: Input type="password" with show/hide toggle
+
+Pattern 6: DYNAMIC LIST GENERATION
+  Used: Date selection (29-31 items), Time (24 items), Passenger count (10 items)
+  → Replace with: Dynamic option generation in React/Vue
+
+Pattern 7: VALIDATION & ERROR RECOVERY
+  Used: After failed login/payment, during polling loop
+  → Replace with: Form validation with error messages + retry button
+
+
+================================================================================
+                        DATA FLOW FOR MIGRATION
+================================================================================
+
+CLI Implementation:          Web Implementation:
+─────────────────          ────────────────────
+
+Python Keyring     ────→    Encrypted DB (PostgreSQL)
+  (OS-dependent)            + Session Management
+                            + Browser Storage (for UI state)
+
+Click CLI Entry    ────→    FastAPI/Express Backend
+  (srtgo())                 + React/Vue Frontend
+
+inquirer Prompts   ────→    Form Components
+  (Terminal UI)             (HTML/CSS/JS)
+
+SRT/KTX Classes    ────→    API Endpoints
+  (Direct API calls)        (Wrapped HTTP endpoints)
+
+Telegram async()   ────→    WebSocket + Background Job
+  (blocking calls)          (Celery/Bull Queue)
+
+Waiting Loop       ────→    Long-polling / Server-Sent Events
+  (CPU spin)                (Efficient async operations)
+
+

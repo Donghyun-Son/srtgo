@@ -1,0 +1,640 @@
+================================================================================
+                    SRTGO INQUIRER MIGRATION ANALYSIS
+                         COMPREHENSIVE REPORT
+================================================================================
+
+1. INQUIRER USAGE OVERVIEW
+================================================================================
+
+The application uses inquirer for ALL terminal UI interactions. Total inquirer 
+method calls: 37+ instances across 6 different input types.
+
+Inquirer Methods Used:
+  - inquirer.list_input()      - Simple list selection (3 calls)
+  - inquirer.prompt()          - Multi-question form submission (7 calls)
+  - inquirer.Checkbox()        - Multi-select UI component (3 components)
+  - inquirer.Text()            - Text input field (6 components)
+  - inquirer.Password()        - Masked password input (5 components)
+  - inquirer.List()            - List selection component (6 components)
+  - inquirer.Confirm()         - Yes/No confirmation (2+ calls)
+
+
+2. DETAILED UI FLOWS & COMPONENTS MAPPING
+================================================================================
+
+2.1 MAIN MENU FLOW (Lines 131-184)
+────────────────────────────────────────────────────────────────────────────
+
+Function: srtgo()
+UI Type: Loop-based menu system
+
+Choice Menu (inquirer.list_input):
+  1. "예매 시작" (Start Reservation) → reserve()
+  2. "예매 확인/결제/취소" (Check/Pay/Cancel) → check_reservation()
+  3. "로그인 설정" (Login Settings) → set_login()
+  4. "텔레그램 설정" (Telegram Settings) → set_telegram()
+  5. "카드 설정" (Card Settings) → set_card()
+  6. "역 설정" (Station Settings - Checkbox) → set_station()
+  7. "역 직접 수정" (Edit Stations - Text) → edit_station()
+  8. "예매 옵션 설정" (Reservation Options - Checkbox) → set_options()
+  9. "나가기" (Exit) → -1
+
+Rail Type Selection (inquirer.list_input):
+  - Choices: "SRT" (red text), "KTX" (cyan text), "취소" (Cancel)
+  - Shown for options: 1, 2, 3, 6, 7
+
+
+2.2 RESERVATION FLOW - Main Complex Flow (Lines 447-782)
+────────────────────────────────────────────────────────────────────────────
+
+Function: reserve(rail_type="SRT", debug=False)
+
+Login Verification:
+  - Calls login() which triggers set_login() if credentials missing
+  
+Step 1: Dynamic Date Selection (inquirer.List)
+  Component: inquirer.List("date")
+  Message: "출발 날짜 선택 (↕:이동, Enter: 선택, Ctrl-C: 취소)"
+  Choices: Generated list of next 29-31 days with format "YYYY/MM/DD Day"
+  Logic: Date window calculated based on rail type and current time
+    - SRT: D-30 (or D-29 before 7 AM)
+    - KTX: D-31 (or D-30 before 7 AM)
+
+Step 2: Station Selection - Departure (inquirer.List)
+  Component: inquirer.List("departure")
+  Message: "출발역 선택 (↕:이동, Enter: 선택, Ctrl-C: 취소)"
+  Choices: Station list from settings or defaults
+  Default: Previous selection (stored in keyring)
+
+Step 3: Station Selection - Arrival (inquirer.List)
+  Component: inquirer.List("arrival")
+  Message: "도착역 선택 (↕:이동, Enter: 선택, Ctrl-C: 취소)"
+  Choices: Same station list
+  Default: Previous selection
+
+Step 4: Time Selection (inquirer.List)
+  Component: inquirer.List("time")
+  Message: "출발 시각 선택 (↕:이동, Enter: 선택, Ctrl-C: 취소)"
+  Choices: Hours 00-23 formatted as "00", "01", ... "23"
+  Default: Previous selection or "120000"
+
+Step 5: Adult Passenger Count (inquirer.List)
+  Component: inquirer.List("adult")
+  Message: "성인 승객수 (↕:이동, Enter: 선택, Ctrl-C: 취소)"
+  Choices: range(10) [0-9]
+  Default: Previous selection or 1
+
+Step 6: Optional Passenger Types (inquirer.List) - CONDITIONAL
+  Shown if options contain: "child", "senior", "disability1to3", "disability4to6"
+  
+  Component: inquirer.List(key)
+  Message: "{label} 승객수 (↕:이동, Enter: 선택, Ctrl-C: 취소)"
+  Choices: range(10) [0-9]
+  Passenger Types:
+    - "child" → "어린이" (Children)
+    - "senior" → "경로우대" (Seniors)
+    - "disability1to3" → "1~3급 장애인" (Disability 1-3)
+    - "disability4to6" → "4~6급 장애인" (Disability 4-6)
+
+Batch Submit All Questions:
+  - All questions in list q_info submitted via inquirer.prompt(q_info)
+  - Single call handles 6+ input fields
+
+Train Search & Selection (inquirer.Checkbox)
+  Component: inquirer.Checkbox("trains")
+  Message: "예약할 열차 선택 (↕:이동, Space: 선택, Enter: 완료, ...)"
+  Choices: List of available trains with formatted output (colors applied)
+  Default: None (no pre-selection)
+  
+  Train Formatting:
+    - Shows "예약가능" or "가능" in green
+    - Shows "신청하기" as green for waiting list
+
+Seat Type Selection (inquirer.List)
+  Component: inquirer.List("type")
+  Message: "선택 유형"
+  Choices:
+    - "일반실 우선" → SeatType.GENERAL_FIRST
+    - "일반실만" → SeatType.GENERAL_ONLY
+    - "특실 우선" → SeatType.SPECIAL_FIRST
+    - "특실만" → SeatType.SPECIAL_ONLY
+
+Payment Decision (inquirer.Confirm)
+  Component: inquirer.Confirm("pay")
+  Message: "예매 시 카드 결제"
+  Default: False
+  
+Final Confirmation:
+  - All seat/payment options submitted via inquirer.prompt(q_options)
+
+Error Recovery Loop:
+  Component: inquirer.confirm()
+  Message: "계속할까요" (Continue?)
+  Default: True
+  Called on exceptions during reservation polling
+
+
+2.3 SETTINGS FLOWS
+────────────────────────────────────────────────────────────────────────────
+
+2.3.1 Station Selection (set_station) - Lines 186-211
+───────────────────────────────────────────────────
+
+Component: inquirer.Checkbox("stations")
+Message: "역 선택 (↕:이동, Space: 선택, Enter: 완료, Ctrl-A: 전체선택, ...)"
+Choices: Full station list for selected rail type
+Default: Previously selected stations from keyring
+Function: Multi-select with special keys:
+  - Space: Toggle selection
+  - Ctrl-A: Select all
+  - Ctrl-R: Deselect all
+  - Ctrl-C: Cancel
+  - Enter: Confirm selection
+Storage: Saves comma-separated selected stations to keyring
+
+
+2.3.2 Direct Station Editing (edit_station) - Lines 214-246
+────────────────────────────────────────────────────────────
+
+Component: inquirer.Text("stations")
+Message: "역 수정 (예: 수서,대전,동대구)"
+Default: Current stations from keyring
+Function: Free-form text input
+  - User enters comma-separated station names
+  - Validated for Korean characters (Hangul)
+  - Falls back to defaults if invalid
+Storage: Saves validated stations to keyring
+
+
+2.3.3 Reservation Options (set_options) - Lines 260-288
+─────────────────────────────────────────────────────────
+
+Component: inquirer.Checkbox("options")
+Message: "예매 옵션 선택 (Space: 선택, Enter: 완료, ...)"
+Choices:
+  - "어린이" → "child"
+  - "경로우대" → "senior"
+  - "중증장애인" → "disability1to3"
+  - "경증장애인" → "disability4to6"
+  - "KTX만" → "ktx" (KTX only filter)
+Default: Previously selected options
+Storage: Saves comma-separated options to keyring
+
+
+2.3.4 Telegram Configuration (set_telegram) - Lines 291-325
+────────────────────────────────────────────────────────────
+
+Component 1: inquirer.Text("token")
+Message: "텔레그램 token (Enter: 완료, Ctrl-C: 취소)"
+Default: Stored token from keyring
+
+Component 2: inquirer.Text("chat_id")
+Message: "텔레그램 chat_id (Enter: 완료, Ctrl-C: 취소)"
+Default: Stored chat_id from keyring
+
+Submitted via: inquirer.prompt([token_field, chat_id_field])
+Validation: Attempts to send test message via Telegram API
+Storage: Stores both fields in keyring
+
+
+2.3.5 Card Settings (set_card) - Lines 340-376
+───────────────────────────────────────────────
+
+Component 1: inquirer.Password("number")
+Message: "신용카드 번호 (하이픈 제외(-), ...)"
+Default: Stored card number
+
+Component 2: inquirer.Password("password")
+Message: "카드 비밀번호 앞 2자리"
+Default: Stored password
+
+Component 3: inquirer.Password("birthday")
+Message: "생년월일 (YYMMDD) / 사업자등록번호"
+Default: Stored birthday
+
+Component 4: inquirer.Password("expire")
+Message: "카드 유효기간 (YYMM, ...)"
+Default: Stored expiration
+
+Submitted via: inquirer.prompt([all 4 password fields])
+Storage: Each field stored separately in keyring
+
+
+2.3.6 Login Setup (set_login) - Lines 393-431
+──────────────────────────────────────────────
+
+Component 1: inquirer.Text("id")
+Message: "계정 아이디 (멤버십 번호, 이메일, 전화번호)"
+Default: Stored user ID
+
+Component 2: inquirer.Password("pass")
+Message: "계정 패스워드"
+Default: Stored password
+
+Submitted via: inquirer.prompt([id_field, password_field])
+Validation: Attempts login with provided credentials
+  - For SRT: Creates SRT() instance
+  - For KTX: Creates Korail() instance
+Error Handling: Shows error message, deletes stored credentials if invalid
+Storage: Saves credentials to keyring
+
+
+2.4 RESERVATION STATUS FLOW (Lines 822-902)
+────────────────────────────────────────────────────────────────────────────
+
+Function: check_reservation(rail_type="SRT", debug=False)
+
+Loop-based flow:
+
+Reservation List Selection (inquirer.list_input):
+  Message: "예약 취소 (Enter: 결정)"
+  Choices: 
+    - List of all reservations/tickets with indices
+    - "텔레그램으로 예매 정보 전송" → -2
+    - "돌아가기" (Go back) → -1
+  Function: User selects a reservation to manage
+
+Unpaid Reservation Action (inquirer.list_input):
+  Condition: If selected reservation is not a ticket and not waiting
+  Message: "결재 대기 승차권: {reservation_details}"
+  Choices:
+    - "결제하기" (Pay) → 1
+    - "취소하기" (Cancel) → 2
+
+Cancellation Confirmation (inquirer.confirm):
+  Message: colored("정말 취소하시겠습니까") (Really cancel?)
+  Default: True
+
+
+3. USER INPUT DATA MAPPING
+================================================================================
+
+3.1 Input Categories
+─────────────────────
+
+TRAVEL PARAMETERS:
+  ├─ Departure Station (선택지에서)
+  ├─ Arrival Station (선택지에서)
+  ├─ Date (선택지에서 동적 생성)
+  ├─ Time (선택지 00-23)
+  └─ Passenger Counts (수량 입력)
+
+PASSENGER INFORMATION:
+  ├─ Adult Count (0-9)
+  ├─ Child Count (0-9, optional)
+  ├─ Senior Count (0-9, optional)
+  ├─ Disability 1-3 Count (0-9, optional)
+  └─ Disability 4-6 Count (0-9, optional)
+
+PREFERENCES:
+  ├─ Seat Type (일반실/특실, 우선/만)
+  ├─ Payment Option (예매 시 카드 결제 여부)
+  └─ Reservation Options (어린이/경로/장애인 여부, KTX만 필터)
+
+CREDENTIALS:
+  ├─ User ID (멤버십/이메일/전화번호)
+  ├─ Password
+  ├─ Card Number
+  ├─ Card Password (2자리)
+  ├─ Birthday/Business Number
+  ├─ Card Expiration
+  ├─ Telegram Token
+  └─ Telegram Chat ID
+
+
+3.2 Stateful Data Storage
+───────────────────────────
+
+All user inputs persisted in Python Keyring:
+
+Service Names: "SRT" or "KTX"
+Credentials:
+  - "id" → User ID
+  - "pass" → Password
+  - "ok" → Verification flag (1 = valid)
+  - "departure" → Last departure
+  - "arrival" → Last arrival
+  - "date" → Last date
+  - "time" → Last time
+  - "adult", "child", "senior", "disability1to3", "disability4to6" → Counts
+  - "station" → Comma-separated preferred stations
+
+Service Name: "card"
+  - "number" → Card number
+  - "password" → Card password
+  - "birthday" → Birthday/Business number
+  - "expire" → Expiration date
+  - "ok" → Verification flag
+
+Service Name: "telegram"
+  - "token" → Bot token
+  - "chat_id" → Chat ID
+  - "ok" → Verification flag
+
+Service Name: "SRT" (for shared settings)
+  - "options" → Comma-separated options (child,senior,etc)
+
+
+4. APPLICATION FLOW SEQUENCES
+================================================================================
+
+4.1 COMPLETE RESERVATION FLOW SEQUENCE
+──────────────────────────────────────
+
+1. User selects "예매 시작" from main menu
+2. User selects train type (SRT or KTX)
+3. Login verification (prompts for credentials if needed)
+4. Dynamic date selection (next 29-31 days)
+5. Departure station selection (from configured stations)
+6. Arrival station selection (from configured stations)
+7. Departure time selection (00-23)
+8. Adult passenger count (0-9)
+9. [Optional] Additional passenger types (if enabled in options)
+10. Search trains with parameters
+11. Multi-select train(s) from search results
+12. Select seat type (4 options)
+13. Confirm payment option (yes/no)
+14. Poll for availability + attempt reservation loop
+15. Success confirmation with ticket details
+16. Send notification to Telegram (if configured)
+
+
+4.2 SETTINGS/CONFIGURATION FLOW
+──────────────────────────────────
+
+Main Menu → Select Setting Option → Input Configuration → Save to Keyring
+
+Options:
+  - Station Selection (Checkbox multi-select)
+  - Direct Station Edit (Text input)
+  - Reservation Options (Checkbox multi-select)
+  - Telegram Config (Text × 2)
+  - Card Settings (Password × 4)
+  - Login Setup (Text + Password)
+
+
+5. KEY CHALLENGES FOR WEB MIGRATION
+================================================================================
+
+5.1 UI Complexity
+──────────────────
+
+Challenge: Many interdependent forms
+  - Questions submitted in batches with inquirer.prompt()
+  - Dynamic question generation based on options
+  - Conditional passenger type questions
+  - Default values loaded from keyring state
+
+Web Migration:
+  → Design form-based UI with multi-step wizard
+  → Implement state management for defaults
+  → Create conditional field rendering based on options
+  → Build train selection table with multi-select
+
+
+5.2 Real-time Polling & Notifications
+────────────────────────────────────────
+
+Challenge: After reservation, enters infinite polling loop
+  - Continuously searches trains until seat available
+  - Shows spinner/status during polling
+  - Handles connection errors with retry + keyring restoration
+  - Sends async Telegram notifications
+
+Web Migration:
+  → Use WebSocket for real-time polling updates
+  → Implement background job system (Celery/etc)
+  → Create UI notification system (toast/modal)
+  → Handle session persistence across page reloads
+
+
+5.3 Credential & State Management
+──────────────────────────────────
+
+Challenge: Uses Python keyring for all credential storage
+  - OS-dependent (Windows Credential Manager, Linux Secret Service, etc)
+  - Defaults loaded and shown as masked in prompts
+  - Per-service credential namespacing
+
+Web Migration:
+  → Implement encrypted credential storage (DB)
+  → Use session management instead of keyring
+  → Create server-side state management
+  → Implement OAuth/token-based auth if replacing login
+
+
+5.4 Multi-select Interactions
+───────────────────────────────
+
+Challenge: Complex multi-select UI with special keys
+  - Space: toggle item
+  - Ctrl-A: select all
+  - Ctrl-R: deselect all
+  - Ctrl-C: cancel
+
+Web Migration:
+  → Use checkbox arrays or dedicated multi-select component
+  → Implement keyboard shortcuts in JavaScript
+  → Add visual "select all/clear" buttons
+  → Create tag-based station selection alternative
+
+
+5.5 Train Search Results Display
+──────────────────────────────────
+
+Challenge: Trains formatted with color coding
+  - Shows availability status with colors
+  - Custom __repr__() formatting
+  - Multi-checkbox selection with visual feedback
+
+Web Migration:
+  → Create data table with train details
+  → Implement color-coded status badges
+  → Build multi-select table rows with checkboxes
+  → Show seat availability inline
+
+
+6. DEPENDENCIES & STACK ANALYSIS
+================================================================================
+
+Current Stack:
+  - Language: Python 3.10+
+  - CLI Framework: click
+  - Terminal UI: inquirer>=3.4, prompt_toolkit>=3
+  - HTTP: requests or curl_cffi (auto-selected)
+  - Crypto: PyCryptodome
+  - Auth: keyring
+  - Notifications: python-telegram-bot
+  - Colors: termcolor
+
+Web Stack Suggestions:
+  - Backend: FastAPI (Python) or Node.js/Express
+  - Frontend: React, Vue, or vanilla JS
+  - State: Redux/Vuex or SQLAlchemy ORM
+  - Storage: PostgreSQL for credentials (encrypted), Redis for session
+  - Real-time: WebSocket for polling updates
+  - Background: Celery/RQ for async reservation polling
+
+
+7. CONVERSION CHECKLIST FOR WEB MIGRATION
+================================================================================
+
+HIGH PRIORITY (Core Functionality):
+  ✓ Extract all inquirer prompt logic into reusable UI components
+  ✓ Create form components for each prompt type:
+    - Text input
+    - Password input
+    - List selection
+    - Multi-select (checkbox)
+    - Confirm (yes/no)
+  ✓ Build multi-step reservation form wizard
+  ✓ Implement train search results table with multi-select
+  ✓ Create settings/configuration pages
+
+MEDIUM PRIORITY (State & Data):
+  ✓ Replace keyring with encrypted database storage
+  ✓ Implement session management & authentication
+  ✓ Build state management system (Redux/Context API/Vuex)
+  ✓ Create credential encryption for sensitive data
+  ✓ Implement form default value hydration
+
+MEDIUM PRIORITY (Advanced Features):
+  ✓ Build WebSocket connection for real-time polling
+  ✓ Create background job system for async reservation
+  ✓ Implement notification system (toast/modal)
+  ✓ Build Telegram integration notification UI
+  ✓ Create polling status indicator/spinner
+
+LOWER PRIORITY (UX Enhancement):
+  ✓ Add keyboard shortcuts (matching CLI behavior)
+  ✓ Create responsive mobile design
+  ✓ Add search/filter for large station lists
+  ✓ Implement sorting for train results
+  ✓ Create history/saved searches feature
+
+
+8. COMPONENT SPECIFICATIONS FOR WEB
+================================================================================
+
+8.1 Reusable Form Components Needed
+────────────────────────────────────
+
+TextInputField
+  Props: message, placeholder, default, onChange, onSubmit
+  Rendering: Input field with label
+  
+PasswordField
+  Props: message, default, onChange, onSubmit
+  Rendering: Masked input field
+  
+SelectField / ListField
+  Props: message, options, default, onChange, onSubmit
+  Rendering: Dropdown or radio button group
+  
+CheckboxField / MultiSelectField
+  Props: message, options, default, onChange, onSubmit
+  Rendering: Checkbox group
+  
+ConfirmField / BooleanField
+  Props: message, default, onChange, onSubmit
+  Rendering: Yes/No buttons
+  
+FormWizard
+  Props: steps[], currentStep, onNext, onPrevious, onComplete
+  Rendering: Multi-step form with progress indicator
+
+
+8.2 Page/Screen Structure
+───────────────────────────
+
+Dashboard/Main Menu
+  - Links to: Reserve, Check Reservations, Settings
+
+Reserve Wizard (Multi-Step)
+  Step 1: Train Type Selection (SRT/KTX)
+  Step 2: Login (if not authenticated)
+  Step 3: Travel Details (Date, Stations, Time, Passengers)
+  Step 4: Train Search Results (multi-select)
+  Step 5: Seat Type & Payment Options
+  Step 6: Confirmation + Polling Status
+
+Check Reservations Page
+  - List of current reservations
+  - Actions: Pay, Cancel, View Details
+  - Telegram notification button
+
+Settings Pages
+  - Station Configuration
+  - Reservation Options (Passenger Types)
+  - Login Credentials
+  - Card Information
+  - Telegram Integration
+
+
+9. FILES TO REFACTOR
+================================================================================
+
+Candidates for Web Backend Exposure:
+  
+  /srtgo/srtgo.py (906 lines)
+    → Extract logic into service classes
+    → Lines 447-782: reserve() → ReservationService
+    → Lines 822-902: check_reservation() → ReservationStatusService
+    → Lines 186-246: Station config → StationService
+    → Lines 260-288: Options config → OptionsService
+    → Lines 291-376: Settings → SettingsService
+
+  /srtgo/srt.py (1,261 lines)
+    → Keep as-is, wrap in HTTP API endpoints
+    → Already handles SRT API communication
+    → Methods to expose: search_train(), reserve(), cancel(), refund()
+
+  /srtgo/ktx.py (948 lines)
+    → Keep as-is, wrap in HTTP API endpoints
+    → Already handles KTX API communication
+    → Methods to expose: search_train(), reserve(), cancel(), refund()
+
+
+10. SUMMARY TABLE: INQUIRER METHODS & WEB EQUIVALENTS
+================================================================================
+
+INQUIRER METHOD          COUNT  REPLACEMENT UI COMPONENT
+─────────────────────────────────────────────────────────
+inquirer.list_input()      3    Dropdown or Select component
+inquirer.Checkbox()        3    Multi-select / Checkbox group
+inquirer.Text()            6    Text input field
+inquirer.Password()        5    Password input field (masked)
+inquirer.List()            6    Dropdown / Radio buttons
+inquirer.Confirm()         2+   Boolean toggle / Yes-No buttons
+inquirer.prompt()          7    Form submission / Multi-field form
+─────────────────────────────────────────────────────────
+Total Prompts:           30+    Form components + Pages
+
+
+11. NOTES ON COMPLEXITY & RISK
+================================================================================
+
+HIGH COMPLEXITY AREAS:
+  1. Real-time polling loop (lines 700-782)
+     - Must move to background job + WebSocket updates
+     - Error handling & reconnection logic
+     
+  2. Dynamic form generation (lines 500-568)
+     - Conditional passenger type questions
+     - State-dependent question lists
+     
+  3. Train search & display (lines 629-651)
+     - Custom formatting with colors
+     - Multi-select with visual feedback
+     
+  4. Credential storage (spread throughout)
+     - Currently uses OS keyring
+     - Must migrate to server-side encrypted storage
+
+RISK AREAS:
+  - User session persistence across browser reloads
+  - Credential security in web environment
+  - Real-time polling performance with many users
+  - State synchronization (client ↔ server)
+  - Error recovery in async operations
+
