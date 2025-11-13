@@ -55,6 +55,8 @@ class ReservationService:
         Poll for train availability in background.
 
         This runs as a background task and updates reservation status.
+        The polling continues even if the browser is closed, and results
+        are saved to the database for later retrieval.
         """
         try:
             # Get reservation
@@ -103,8 +105,16 @@ class ReservationService:
             max_attempts = 100
             attempt = 0
 
+            print(f"[Polling #{reservation_id}] Started (max {max_attempts} attempts)")
+
             while attempt < max_attempts:
                 try:
+                    # Refresh reservation to check if user cancelled
+                    await db.refresh(reservation)
+                    if reservation.status == ReservationStatus.CANCELLED:
+                        print(f"[Polling #{reservation_id}] Cancelled by user")
+                        return
+
                     # Search for trains
                     trains = await train_service.search_trains(
                         reservation.train_type,
@@ -142,6 +152,8 @@ class ReservationService:
                                     reservation.completed_at = datetime.utcnow()
                                     await db.commit()
 
+                                    print(f"[Polling #{reservation_id}] SUCCESS - Reserved train {train_number}")
+
                                     # Notify via callback if provided
                                     if callback:
                                         await callback(reservation_id, "success", reserve_obj)
@@ -150,6 +162,9 @@ class ReservationService:
 
                     # No trains available, wait and retry
                     attempt += 1
+                    if attempt % 10 == 0:  # Log every 10 attempts
+                        print(f"[Polling #{reservation_id}] Attempt {attempt}/{max_attempts}")
+
                     if callback:
                         await callback(reservation_id, "polling", {"attempt": attempt, "max_attempts": max_attempts})
 
@@ -157,7 +172,7 @@ class ReservationService:
 
                 except Exception as e:
                     # Log error and continue
-                    print(f"Error during polling attempt {attempt}: {str(e)}")
+                    print(f"[Polling #{reservation_id}] Error at attempt {attempt}: {str(e)}")
                     attempt += 1
                     await asyncio.sleep(30)
 
@@ -166,11 +181,14 @@ class ReservationService:
             reservation.error_message = "No available trains found after maximum attempts"
             await db.commit()
 
+            print(f"[Polling #{reservation_id}] FAILED - Max attempts reached")
+
             if callback:
                 await callback(reservation_id, "failed", None)
 
         except Exception as e:
             # Update reservation with error
+            print(f"[Polling #{reservation_id}] FATAL ERROR: {str(e)}")
             try:
                 result = await db.execute(
                     select(Reservation).where(Reservation.id == reservation_id)

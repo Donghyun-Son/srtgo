@@ -5,15 +5,40 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from pathlib import Path
+from sqlalchemy import select
 
 from backend.core.config import settings
-from backend.models.database import init_db
+from backend.models.database import init_db, AsyncSessionLocal
+from backend.models.reservation import Reservation, ReservationStatus
+from backend.services.reservation_service import reservation_service
 from backend.api import (
     auth_router,
     credentials_router,
     trains_router,
     reservations_router,
 )
+
+
+async def resume_polling_tasks():
+    """Resume polling for reservations that were searching when server stopped."""
+    try:
+        async with AsyncSessionLocal() as db:
+            # Find all reservations in SEARCHING status
+            result = await db.execute(
+                select(Reservation).where(Reservation.status == ReservationStatus.SEARCHING)
+            )
+            searching_reservations = result.scalars().all()
+
+            if searching_reservations:
+                print(f"Found {len(searching_reservations)} interrupted polling tasks. Resuming...")
+                for reservation in searching_reservations:
+                    # Resume polling for each reservation
+                    reservation_service.start_polling(reservation.id, db)
+                    print(f"  - Resumed polling for reservation #{reservation.id}")
+            else:
+                print("No interrupted polling tasks found.")
+    except Exception as e:
+        print(f"Error resuming polling tasks: {e}")
 
 
 @asynccontextmanager
@@ -23,6 +48,10 @@ async def lifespan(app: FastAPI):
     print("Initializing database...")
     await init_db()
     print("Database initialized!")
+
+    # Resume interrupted polling tasks
+    await resume_polling_tasks()
+
     yield
     # Shutdown
     print("Shutting down...")
