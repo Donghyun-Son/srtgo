@@ -89,7 +89,8 @@ class TrainService:
                     arrival,
                     date,
                     time,
-                    passengers=passenger_list
+                    passengers=passenger_list,
+                    available_only=False  # Include unavailable trains for standby (same as CLI)
                 )
                 return trains
 
@@ -123,7 +124,8 @@ class TrainService:
                     arrival,
                     date,
                     time,
-                    passengers=passenger_list
+                    passengers=passenger_list,
+                    include_no_seats=True  # Include trains without seats for waiting list (same as CLI)
                 )
                 return trains
 
