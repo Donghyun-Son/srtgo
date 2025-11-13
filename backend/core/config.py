@@ -1,6 +1,12 @@
 """Application configuration."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
+import os
+from pathlib import Path
+
+# Get the backend directory path
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+ENV_FILE = BACKEND_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -29,7 +35,7 @@ class Settings(BaseSettings):
     TELEGRAM_ENABLED: bool = False
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE) if ENV_FILE.exists() else None,
         case_sensitive=True,
         extra="ignore"
     )
