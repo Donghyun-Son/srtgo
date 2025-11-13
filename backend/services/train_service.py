@@ -196,7 +196,7 @@ class TrainService:
         seat_type: str = None
     ) -> Tuple[bool, Any, str]:
         """
-        Reserve a train with seat type preference.
+        Reserve a train with seat type preference (same as CLI).
 
         Returns:
             Tuple of (success: bool, reservation: Any, message: str)
@@ -205,6 +205,21 @@ class TrainService:
             if train_type == "SRT":
                 if not self.srt_client:
                     raise ValueError("SRT client not initialized. Please login first.")
+
+                # Convert passengers dict to SRT passenger objects (same as CLI)
+                passenger_list = []
+                from srtgo.srt import Adult, Child, Senior, Disability1To3, Disability4To6
+
+                for _ in range(passengers.get('adult', 1)):
+                    passenger_list.append(Adult())
+                for _ in range(passengers.get('child', 0)):
+                    passenger_list.append(Child())
+                for _ in range(passengers.get('senior', 0)):
+                    passenger_list.append(Senior())
+                for _ in range(passengers.get('disability1to3', 0)):
+                    passenger_list.append(Disability1To3())
+                for _ in range(passengers.get('disability4to6', 0)):
+                    passenger_list.append(Disability4To6())
 
                 # Map seat type string to SeatType enum
                 option = SeatType.GENERAL_FIRST  # default
@@ -215,12 +230,51 @@ class TrainService:
                 elif seat_type == "special_first":
                     option = SeatType.SPECIAL_FIRST
 
-                reservation = self.srt_client.reserve(train, option=option)
+                # Reserve with passengers (same as CLI: rail.reserve(train, passengers=passengers, option=option))
+                reservation = self.srt_client.reserve(train, passengers=passenger_list, option=option)
+
+                # If standby reservation with phone number, set options (same as CLI)
+                if hasattr(reservation, 'is_waiting') and reservation.is_waiting:
+                    phone_number = self.srt_client.phone_number if hasattr(self.srt_client, 'phone_number') else None
+                    if phone_number:
+                        # Set standby options: SMS agreement and class change agreement
+                        agree_class_change = (option == SeatType.SPECIAL_FIRST or option == SeatType.GENERAL_FIRST)
+                        try:
+                            self.srt_client.reserve_standby_option_settings(
+                                reservation,
+                                isAgreeSMS=True,
+                                isAgreeClassChange=agree_class_change,
+                                telNo=phone_number
+                            )
+                        except Exception as e:
+                            print(f"Warning: Failed to set standby options: {e}")
+
                 return True, reservation, str(reservation)
 
             elif train_type == "KTX":
                 if not self.ktx_client:
                     raise ValueError("KTX client not initialized. Please login first.")
+
+                # Convert passengers dict to KTX passenger objects (same as CLI)
+                from srtgo.ktx import (
+                    AdultPassenger,
+                    ChildPassenger,
+                    SeniorPassenger,
+                    Disability1To3Passenger,
+                    Disability4To6Passenger
+                )
+
+                passenger_list = []
+                for _ in range(passengers.get('adult', 1)):
+                    passenger_list.append(AdultPassenger())
+                for _ in range(passengers.get('child', 0)):
+                    passenger_list.append(ChildPassenger())
+                for _ in range(passengers.get('senior', 0)):
+                    passenger_list.append(SeniorPassenger())
+                for _ in range(passengers.get('disability1to3', 0)):
+                    passenger_list.append(Disability1To3Passenger())
+                for _ in range(passengers.get('disability4to6', 0)):
+                    passenger_list.append(Disability4To6Passenger())
 
                 # Map seat type string to ReserveOption enum
                 option = ReserveOption.GENERAL_FIRST  # default
@@ -231,7 +285,8 @@ class TrainService:
                 elif seat_type == "special_first":
                     option = ReserveOption.SPECIAL_FIRST
 
-                reservation = self.ktx_client.reserve(train, option=option)
+                # Reserve with passengers (same as CLI)
+                reservation = self.ktx_client.reserve(train, passengers=passenger_list, option=option)
                 return True, reservation, str(reservation)
 
             else:
