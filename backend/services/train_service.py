@@ -192,6 +192,16 @@ class TrainService:
         except Exception as e:
             raise ValueError(f"Failed to get reservations: {str(e)}")
 
+    def clear(self, train_type: str):
+        """Clear netfunnel cache for train service."""
+        try:
+            if train_type == "SRT" and self.srt_client:
+                self.srt_client.clear()
+            elif train_type == "KTX" and self.ktx_client:
+                self.ktx_client.clear()
+        except Exception:
+            pass  # Ignore errors during clear
+
     def logout(self, train_type: str):
         """Logout from train service."""
         if train_type == "SRT":

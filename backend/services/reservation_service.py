@@ -1,14 +1,28 @@
 """Service for managing reservations and polling."""
 import asyncio
+import random
 from typing import Dict, Any, Optional, Callable
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
+from json import JSONDecodeError
 
 from backend.models.reservation import Reservation, ReservationStatus
 from backend.models.credential import TrainCredential
 from backend.services.train_service import TrainService
 from backend.core.security import credential_encryption
+
+# Import train errors for specific error handling
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from srtgo.srt import SRTError
+from srtgo.ktx import KorailError
+
+# Polling interval configuration (same as original CLI)
+RESERVE_INTERVAL_SHAPE = 4
+RESERVE_INTERVAL_SCALE = 0.25
+RESERVE_INTERVAL_MIN = 0.25
 
 
 class ReservationService:
@@ -17,6 +31,13 @@ class ReservationService:
     def __init__(self):
         """Initialize reservation service."""
         self.active_polls: Dict[int, asyncio.Task] = {}
+
+    def _get_sleep_interval(self) -> float:
+        """
+        Get random sleep interval using gamma distribution.
+        Same as original CLI implementation.
+        """
+        return random.gammavariate(RESERVE_INTERVAL_SHAPE, RESERVE_INTERVAL_SCALE) + RESERVE_INTERVAL_MIN
 
     async def create_reservation(
         self,
@@ -114,7 +135,10 @@ class ReservationService:
                 if elapsed_seconds >= max_duration:
                     print(f"[Polling #{reservation_id}] TIMEOUT - 24 hours elapsed")
                     break
+
                 try:
+                    attempt += 1
+
                     # Refresh reservation to check if user cancelled
                     await db.refresh(reservation)
                     if reservation.status == ReservationStatus.CANCELLED:
@@ -166,8 +190,7 @@ class ReservationService:
 
                                     return
 
-                    # No trains available, wait and retry
-                    attempt += 1
+                    # No trains available, log progress and wait
                     elapsed_seconds = (datetime.utcnow() - start_time).total_seconds()
 
                     # Log every 10 minutes
@@ -184,13 +207,92 @@ class ReservationService:
                             "remaining_seconds": int(remaining_seconds)
                         })
 
-                    await asyncio.sleep(30)  # Wait 30 seconds before next attempt
+                    # Use gamma distribution for random interval (like original CLI)
+                    await asyncio.sleep(self._get_sleep_interval())
+
+                except SRTError as ex:
+                    # Handle SRT-specific errors (same as original CLI)
+                    msg = str(ex)
+                    print(f"[Polling #{reservation_id}] SRTError at attempt {attempt}: {msg}")
+
+                    if "정상적인 경로로 접근 부탁드립니다" in msg or "NetFunnel" in msg:
+                        # Clear netfunnel cache and retry
+                        print(f"[Polling #{reservation_id}] Clearing netfunnel cache")
+                        train_service.clear(reservation.train_type)
+                        await asyncio.sleep(self._get_sleep_interval())
+                        continue
+
+                    elif "로그인 후 사용하십시오" in msg:
+                        # Re-login and retry
+                        print(f"[Polling #{reservation_id}] Session expired, re-logging in")
+                        success, login_msg = await train_service.login(reservation.train_type, user_id, password)
+                        if not success:
+                            # Re-login failed, stop polling
+                            reservation.status = ReservationStatus.FAILED
+                            reservation.error_message = f"Re-login failed: {login_msg}"
+                            await db.commit()
+                            print(f"[Polling #{reservation_id}] FAILED - Re-login failed")
+                            return
+                        await asyncio.sleep(self._get_sleep_interval())
+                        continue
+
+                    elif any(err in msg for err in [
+                        "잔여석없음",
+                        "사용자가 많아 접속이 원활하지 않습니다",
+                        "예약대기 접수가 마감되었습니다",
+                        "예약대기자한도수초과"
+                    ]):
+                        # Expected errors, just continue polling
+                        await asyncio.sleep(self._get_sleep_interval())
+                        continue
+
+                    else:
+                        # Unexpected SRT error, log but continue polling
+                        print(f"[Polling #{reservation_id}] Unexpected SRTError, continuing: {msg}")
+                        await asyncio.sleep(self._get_sleep_interval())
+                        continue
+
+                except KorailError as ex:
+                    # Handle Korail-specific errors (same as original CLI)
+                    msg = str(ex)
+                    print(f"[Polling #{reservation_id}] KorailError at attempt {attempt}: {msg}")
+
+                    if "Need to Login" in msg:
+                        # Re-login and retry
+                        print(f"[Polling #{reservation_id}] Session expired, re-logging in")
+                        success, login_msg = await train_service.login(reservation.train_type, user_id, password)
+                        if not success:
+                            # Re-login failed, stop polling
+                            reservation.status = ReservationStatus.FAILED
+                            reservation.error_message = f"Re-login failed: {login_msg}"
+                            await db.commit()
+                            print(f"[Polling #{reservation_id}] FAILED - Re-login failed")
+                            return
+                        await asyncio.sleep(self._get_sleep_interval())
+                        continue
+
+                    elif any(err in msg for err in ["Sold out", "잔여석없음", "예약대기자한도수초과"]):
+                        # Expected errors, just continue polling
+                        await asyncio.sleep(self._get_sleep_interval())
+                        continue
+
+                    else:
+                        # Unexpected Korail error, log but continue polling
+                        print(f"[Polling #{reservation_id}] Unexpected KorailError, continuing: {msg}")
+                        await asyncio.sleep(self._get_sleep_interval())
+                        continue
+
+                except JSONDecodeError as ex:
+                    # JSON decode error, just retry
+                    print(f"[Polling #{reservation_id}] JSONDecodeError at attempt {attempt}, retrying")
+                    await asyncio.sleep(self._get_sleep_interval())
+                    continue
 
                 except Exception as e:
-                    # Log error and continue
-                    print(f"[Polling #{reservation_id}] Error at attempt {attempt}: {str(e)}")
-                    attempt += 1
-                    await asyncio.sleep(30)
+                    # Generic error, log and continue
+                    print(f"[Polling #{reservation_id}] Unexpected error at attempt {attempt}: {str(e)}")
+                    await asyncio.sleep(self._get_sleep_interval())
+                    continue
 
             # Timeout reached
             reservation.status = ReservationStatus.FAILED
