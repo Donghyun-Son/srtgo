@@ -8,7 +8,7 @@ from datetime import datetime
 from json import JSONDecodeError
 
 from backend.models.reservation import Reservation, ReservationStatus
-from backend.models.credential import TrainCredential
+from backend.models.credential import TrainCredential, TelegramCredential
 from backend.services.train_service import TrainService
 from backend.core.security import credential_encryption
 
@@ -38,6 +38,41 @@ class ReservationService:
         Same as original CLI implementation.
         """
         return random.gammavariate(RESERVE_INTERVAL_SHAPE, RESERVE_INTERVAL_SCALE) + RESERVE_INTERVAL_MIN
+
+    async def _send_telegram_notification(self, db: AsyncSession, user_id: int, message: str):
+        """
+        Send telegram notification if enabled for user.
+        Same as original CLI implementation.
+        """
+        try:
+            # Get telegram credentials
+            result = await db.execute(
+                select(TelegramCredential).where(
+                    TelegramCredential.user_id == user_id,
+                    TelegramCredential.is_enabled == True
+                )
+            )
+            telegram_cred = result.scalar_one_or_none()
+
+            if not telegram_cred:
+                return  # No telegram configured
+
+            # Decrypt credentials
+            token = credential_encryption.decrypt(telegram_cred.encrypted_token)
+            chat_id = credential_encryption.decrypt(telegram_cred.encrypted_chat_id)
+
+            # Send message via telegram
+            try:
+                import telegram
+                bot = telegram.Bot(token=token)
+                async with bot:
+                    await bot.send_message(chat_id=chat_id, text=message)
+            except Exception as e:
+                print(f"Failed to send telegram message: {e}")
+
+        except Exception as e:
+            # Don't fail polling if telegram fails
+            print(f"Telegram notification error: {e}")
 
     async def create_reservation(
         self,
@@ -184,6 +219,10 @@ class ReservationService:
 
                                     print(f"[Polling #{reservation_id}] SUCCESS - Reserved train {train_number}")
 
+                                    # Send telegram notification
+                                    telegram_msg = f"🎉 예매 성공! 🎉\n\n열차번호: {train_number}\n{reserve_msg}"
+                                    await self._send_telegram_notification(db, reservation.user_id, telegram_msg)
+
                                     # Notify via callback if provided
                                     if callback:
                                         await callback(reservation_id, "success", reserve_obj)
@@ -218,6 +257,13 @@ class ReservationService:
                     if "정상적인 경로로 접근 부탁드립니다" in msg or "NetFunnel" in msg:
                         # Clear netfunnel cache and retry
                         print(f"[Polling #{reservation_id}] Clearing netfunnel cache")
+                        if callback:
+                            await callback(reservation_id, "error", {
+                                "type": "netfunnel",
+                                "message": "네트워크 혼잡으로 캐시를 초기화하고 재시도합니다",
+                                "original_error": msg,
+                                "action": "retrying"
+                            })
                         train_service.clear(reservation.train_type)
                         await asyncio.sleep(self._get_sleep_interval())
                         continue
@@ -225,6 +271,12 @@ class ReservationService:
                     elif "로그인 후 사용하십시오" in msg:
                         # Re-login and retry
                         print(f"[Polling #{reservation_id}] Session expired, re-logging in")
+                        if callback:
+                            await callback(reservation_id, "error", {
+                                "type": "session_expired",
+                                "message": "세션이 만료되어 재로그인 중입니다",
+                                "action": "re_login"
+                            })
                         success, login_msg = await train_service.login(reservation.train_type, user_id, password)
                         if not success:
                             # Re-login failed, stop polling
@@ -232,7 +284,17 @@ class ReservationService:
                             reservation.error_message = f"Re-login failed: {login_msg}"
                             await db.commit()
                             print(f"[Polling #{reservation_id}] FAILED - Re-login failed")
+                            if callback:
+                                await callback(reservation_id, "error", {
+                                    "type": "re_login_failed",
+                                    "message": f"재로그인 실패: {login_msg}",
+                                    "action": "stopped"
+                                })
                             return
+                        if callback:
+                            await callback(reservation_id, "info", {
+                                "message": "재로그인 성공, 예매 시도를 계속합니다"
+                            })
                         await asyncio.sleep(self._get_sleep_interval())
                         continue
 
@@ -242,13 +304,22 @@ class ReservationService:
                         "예약대기 접수가 마감되었습니다",
                         "예약대기자한도수초과"
                     ]):
-                        # Expected errors, just continue polling
+                        # Expected errors, just continue polling (no callback needed - this is normal)
                         await asyncio.sleep(self._get_sleep_interval())
                         continue
 
                     else:
-                        # Unexpected SRT error, log but continue polling
+                        # Unexpected SRT error, notify user and send telegram
                         print(f"[Polling #{reservation_id}] Unexpected SRTError, continuing: {msg}")
+                        telegram_msg = f"[예약 #{reservation_id}] 예상치 못한 SRT 오류\n\n{msg}\n\n재시도 중입니다."
+                        await self._send_telegram_notification(db, reservation.user_id, telegram_msg)
+                        if callback:
+                            await callback(reservation_id, "error", {
+                                "type": "unexpected_srt_error",
+                                "message": f"예상치 못한 오류 발생: {msg}",
+                                "original_error": msg,
+                                "action": "retrying"
+                            })
                         await asyncio.sleep(self._get_sleep_interval())
                         continue
 
@@ -260,6 +331,12 @@ class ReservationService:
                     if "Need to Login" in msg:
                         # Re-login and retry
                         print(f"[Polling #{reservation_id}] Session expired, re-logging in")
+                        if callback:
+                            await callback(reservation_id, "error", {
+                                "type": "session_expired",
+                                "message": "세션이 만료되어 재로그인 중입니다",
+                                "action": "re_login"
+                            })
                         success, login_msg = await train_service.login(reservation.train_type, user_id, password)
                         if not success:
                             # Re-login failed, stop polling
@@ -267,30 +344,65 @@ class ReservationService:
                             reservation.error_message = f"Re-login failed: {login_msg}"
                             await db.commit()
                             print(f"[Polling #{reservation_id}] FAILED - Re-login failed")
+                            if callback:
+                                await callback(reservation_id, "error", {
+                                    "type": "re_login_failed",
+                                    "message": f"재로그인 실패: {login_msg}",
+                                    "action": "stopped"
+                                })
                             return
+                        if callback:
+                            await callback(reservation_id, "info", {
+                                "message": "재로그인 성공, 예매 시도를 계속합니다"
+                            })
                         await asyncio.sleep(self._get_sleep_interval())
                         continue
 
                     elif any(err in msg for err in ["Sold out", "잔여석없음", "예약대기자한도수초과"]):
-                        # Expected errors, just continue polling
+                        # Expected errors, just continue polling (no callback needed - this is normal)
                         await asyncio.sleep(self._get_sleep_interval())
                         continue
 
                     else:
-                        # Unexpected Korail error, log but continue polling
+                        # Unexpected Korail error, notify user and send telegram
                         print(f"[Polling #{reservation_id}] Unexpected KorailError, continuing: {msg}")
+                        telegram_msg = f"[예약 #{reservation_id}] 예상치 못한 Korail 오류\n\n{msg}\n\n재시도 중입니다."
+                        await self._send_telegram_notification(db, reservation.user_id, telegram_msg)
+                        if callback:
+                            await callback(reservation_id, "error", {
+                                "type": "unexpected_korail_error",
+                                "message": f"예상치 못한 오류 발생: {msg}",
+                                "original_error": msg,
+                                "action": "retrying"
+                            })
                         await asyncio.sleep(self._get_sleep_interval())
                         continue
 
                 except JSONDecodeError as ex:
                     # JSON decode error, just retry
                     print(f"[Polling #{reservation_id}] JSONDecodeError at attempt {attempt}, retrying")
+                    if callback:
+                        await callback(reservation_id, "error", {
+                            "type": "json_decode_error",
+                            "message": "응답 파싱 오류, 재시도 중입니다",
+                            "action": "retrying"
+                        })
                     await asyncio.sleep(self._get_sleep_interval())
                     continue
 
                 except Exception as e:
-                    # Generic error, log and continue
-                    print(f"[Polling #{reservation_id}] Unexpected error at attempt {attempt}: {str(e)}")
+                    # Generic error, notify user and send telegram
+                    error_msg = str(e)
+                    print(f"[Polling #{reservation_id}] Unexpected error at attempt {attempt}: {error_msg}")
+                    telegram_msg = f"[예약 #{reservation_id}] 예상치 못한 오류\n\nType: {type(e).__name__}\nMessage: {error_msg}\n\n재시도 중입니다."
+                    await self._send_telegram_notification(db, reservation.user_id, telegram_msg)
+                    if callback:
+                        await callback(reservation_id, "error", {
+                            "type": "unexpected_error",
+                            "message": f"예상치 못한 오류: {error_msg}",
+                            "original_error": error_msg,
+                            "action": "retrying"
+                        })
                     await asyncio.sleep(self._get_sleep_interval())
                     continue
 
