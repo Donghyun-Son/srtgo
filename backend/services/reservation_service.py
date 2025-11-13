@@ -101,13 +101,19 @@ class ReservationService:
                 await db.commit()
                 return
 
-            # Poll for availability (max 100 attempts with 30 second intervals = 50 minutes)
-            max_attempts = 100
+            # Poll for availability for 24 hours (like original CLI behavior)
+            max_duration = 24 * 3600  # 24 hours in seconds
+            start_time = datetime.utcnow()
             attempt = 0
 
-            print(f"[Polling #{reservation_id}] Started (max {max_attempts} attempts)")
+            print(f"[Polling #{reservation_id}] Started (max duration: 24 hours)")
 
-            while attempt < max_attempts:
+            while True:
+                # Check if 24 hours have passed
+                elapsed_seconds = (datetime.utcnow() - start_time).total_seconds()
+                if elapsed_seconds >= max_duration:
+                    print(f"[Polling #{reservation_id}] TIMEOUT - 24 hours elapsed")
+                    break
                 try:
                     # Refresh reservation to check if user cancelled
                     await db.refresh(reservation)
@@ -162,11 +168,21 @@ class ReservationService:
 
                     # No trains available, wait and retry
                     attempt += 1
-                    if attempt % 10 == 0:  # Log every 10 attempts
-                        print(f"[Polling #{reservation_id}] Attempt {attempt}/{max_attempts}")
+                    elapsed_seconds = (datetime.utcnow() - start_time).total_seconds()
+
+                    # Log every 10 minutes
+                    if int(elapsed_seconds) % 600 == 0 and attempt > 1:
+                        hours = int(elapsed_seconds // 3600)
+                        minutes = int((elapsed_seconds % 3600) // 60)
+                        print(f"[Polling #{reservation_id}] Running for {hours}h {minutes}m ({attempt} attempts)")
 
                     if callback:
-                        await callback(reservation_id, "polling", {"attempt": attempt, "max_attempts": max_attempts})
+                        remaining_seconds = max_duration - elapsed_seconds
+                        await callback(reservation_id, "polling", {
+                            "attempt": attempt,
+                            "elapsed_seconds": int(elapsed_seconds),
+                            "remaining_seconds": int(remaining_seconds)
+                        })
 
                     await asyncio.sleep(30)  # Wait 30 seconds before next attempt
 
@@ -176,12 +192,12 @@ class ReservationService:
                     attempt += 1
                     await asyncio.sleep(30)
 
-            # Max attempts reached
+            # Timeout reached
             reservation.status = ReservationStatus.FAILED
-            reservation.error_message = "No available trains found after maximum attempts"
+            reservation.error_message = "No available trains found within 24 hours"
             await db.commit()
 
-            print(f"[Polling #{reservation_id}] FAILED - Max attempts reached")
+            print(f"[Polling #{reservation_id}] FAILED - Timeout (24 hours)")
 
             if callback:
                 await callback(reservation_id, "failed", None)
