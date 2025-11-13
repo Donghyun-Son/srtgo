@@ -1,0 +1,31 @@
+# FastAPI and web framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+websockets==12.0
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.12.1
+asyncpg==0.29.0
+aiosqlite==0.19.0
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+pydantic[email]==2.5.0
+python-dotenv==1.0.0
+cryptography==41.0.7
+
+# Background tasks (lightweight for 1-5 users)
+aiofiles==23.2.1
+
+# Existing dependencies (from CLI)
+curl-cffi==0.6.0
+requests==2.31.0
+keyring==24.3.0
+PyCryptodome==3.19.0
+python-telegram-bot==20.7
+
+# Utilities
+python-dateutil==2.8.2
