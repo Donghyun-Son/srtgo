@@ -16,7 +16,7 @@ from backend.core.security import credential_encryption
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-from srtgo.srt import SRTError
+from srtgo.srt import SRTError, SRTNetFunnelError
 from srtgo.ktx import KorailError
 
 # Polling interval configuration (same as original CLI)
@@ -210,10 +210,16 @@ class ReservationService:
                                     # Reservation successful
                                     is_waiting = hasattr(reserve_obj, 'is_waiting') and reserve_obj.is_waiting
 
+                                    # Add tickets information to message (same as CLI)
+                                    full_msg = reserve_msg
+                                    if hasattr(reserve_obj, 'tickets') and reserve_obj.tickets:
+                                        tickets_info = "\n" + "\n".join(map(str, reserve_obj.tickets))
+                                        full_msg += tickets_info
+
                                     reservation.status = ReservationStatus.RESERVED
                                     reservation.result_data = {
                                         "train_number": train_number,
-                                        "message": reserve_msg,
+                                        "message": full_msg,
                                         "timestamp": datetime.utcnow().isoformat(),
                                         "is_waiting": is_waiting
                                     }
@@ -265,8 +271,8 @@ class ReservationService:
 
                                         await db.commit()
 
-                                    # Send telegram notification
-                                    telegram_msg = f"🎉 예매 성공! 🎉\n\n열차번호: {train_number}\n{reserve_msg}{payment_msg}"
+                                    # Send telegram notification (with tickets info, same as CLI)
+                                    telegram_msg = f"🎉 예매 성공! 🎉\n\n열차번호: {train_number}\n{full_msg}{payment_msg}"
                                     await self._send_telegram_notification(db, reservation.user_id, telegram_msg)
 
                                     # Notify via callback if provided
@@ -300,7 +306,7 @@ class ReservationService:
                     msg = str(ex)
                     print(f"[Polling #{reservation_id}] SRTError at attempt {attempt}: {msg}")
 
-                    if "정상적인 경로로 접근 부탁드립니다" in msg or "NetFunnel" in msg:
+                    if "정상적인 경로로 접근 부탁드립니다" in msg or isinstance(ex, SRTNetFunnelError):
                         # Clear netfunnel cache and retry
                         print(f"[Polling #{reservation_id}] Clearing netfunnel cache")
                         if callback:
