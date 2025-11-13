@@ -19,6 +19,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from srtgo.srt import SRTError, SRTNetFunnelError
 from srtgo.ktx import KorailError
 
+# Import ConnectionError (same as CLI)
+try:
+    from curl_cffi.requests.exceptions import ConnectionError
+except ImportError:
+    from requests.exceptions import ConnectionError
+
 # Polling interval configuration (same as original CLI)
 RESERVE_INTERVAL_SHAPE = 4
 RESERVE_INTERVAL_SCALE = 0.25
@@ -439,6 +445,37 @@ class ReservationService:
                             "message": "응답 파싱 오류, 재시도 중입니다",
                             "action": "retrying"
                         })
+                    await asyncio.sleep(self._get_sleep_interval())
+                    continue
+
+                except ConnectionError as ex:
+                    # Connection error, re-login and retry (same as CLI)
+                    print(f"[Polling #{reservation_id}] ConnectionError at attempt {attempt}, connection lost")
+                    telegram_msg = f"[예약 #{reservation_id}] 연결이 끊겼습니다\n\n재로그인 후 재시도합니다."
+                    await self._send_telegram_notification(db, reservation.user_id, telegram_msg)
+                    if callback:
+                        await callback(reservation_id, "error", {
+                            "type": "connection_error",
+                            "message": "연결이 끊겼습니다. 재로그인 중입니다",
+                            "action": "re_login"
+                        })
+
+                    # Re-login after connection error
+                    success, login_msg = await train_service.login(reservation.train_type, user_id, password)
+                    if not success:
+                        print(f"[Polling #{reservation_id}] Re-login after ConnectionError failed: {login_msg}")
+                        if callback:
+                            await callback(reservation_id, "error", {
+                                "type": "re_login_failed_after_connection_error",
+                                "message": f"연결 끊김 후 재로그인 실패: {login_msg}",
+                                "action": "retrying"
+                            })
+                    else:
+                        if callback:
+                            await callback(reservation_id, "info", {
+                                "message": "재로그인 성공, 예매 시도를 계속합니다"
+                            })
+
                     await asyncio.sleep(self._get_sleep_interval())
                     continue
 
