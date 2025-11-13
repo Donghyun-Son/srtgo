@@ -5,8 +5,8 @@ import os
 # Add parent directory to path to import existing srtgo module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from srtgo.srt import SRT, SRTError
-from srtgo.ktx import Korail, KorailError
+from srtgo.srt import SRT, SRTError, SeatType
+from srtgo.ktx import Korail, KorailError, ReserveOption
 from typing import List, Dict, Any, Tuple
 
 
@@ -135,6 +135,59 @@ class TrainService:
         except Exception as e:
             raise ValueError(f"Search failed: {str(e)}")
 
+    def is_seat_available(self, train: Any, train_type: str, seat_type: str = None) -> bool:
+        """
+        Check if seats are available for a train (same as CLI _is_seat_available).
+
+        Args:
+            train: Train object
+            train_type: 'SRT' or 'KTX'
+            seat_type: Seat type preference (e.g., 'general_only', 'special_only', 'general_first', 'special_first')
+
+        Returns:
+            True if seats are available (including standby), False otherwise
+        """
+        try:
+            if train_type == "SRT":
+                # Check regular seats first
+                if not train.seat_available():
+                    # If no regular seats, check standby availability
+                    return train.reserve_standby_available()
+
+                # If seats available, check by preference
+                if not seat_type or seat_type == "general_first":
+                    return train.seat_available()
+                elif seat_type == "general_only":
+                    return train.general_seat_available()
+                elif seat_type == "special_first":
+                    return train.seat_available()
+                elif seat_type == "special_only":
+                    return train.special_seat_available()
+                else:
+                    return train.seat_available()
+
+            else:  # KTX
+                # Check regular seats first
+                if not train.has_seat():
+                    # If no regular seats, check waiting list
+                    return train.has_waiting_list()
+
+                # If seats available, check by preference
+                if not seat_type or seat_type == "general_first":
+                    return train.has_seat()
+                elif seat_type == "general_only":
+                    return train.has_general_seat()
+                elif seat_type == "special_first":
+                    return train.has_seat()
+                elif seat_type == "special_only":
+                    return train.has_special_seat()
+                else:
+                    return train.has_seat()
+
+        except Exception as e:
+            print(f"Error checking seat availability: {e}")
+            return False
+
     async def reserve_train(
         self,
         train_type: str,
@@ -143,7 +196,7 @@ class TrainService:
         seat_type: str = None
     ) -> Tuple[bool, Any, str]:
         """
-        Reserve a train.
+        Reserve a train with seat type preference.
 
         Returns:
             Tuple of (success: bool, reservation: Any, message: str)
@@ -153,15 +206,33 @@ class TrainService:
                 if not self.srt_client:
                     raise ValueError("SRT client not initialized. Please login first.")
 
-                reservation = self.srt_client.reserve(train)
-                return True, reservation, "Reservation successful"
+                # Map seat type string to SeatType enum
+                option = SeatType.GENERAL_FIRST  # default
+                if seat_type == "general_only":
+                    option = SeatType.GENERAL_ONLY
+                elif seat_type == "special_only":
+                    option = SeatType.SPECIAL_ONLY
+                elif seat_type == "special_first":
+                    option = SeatType.SPECIAL_FIRST
+
+                reservation = self.srt_client.reserve(train, option=option)
+                return True, reservation, str(reservation)
 
             elif train_type == "KTX":
                 if not self.ktx_client:
                     raise ValueError("KTX client not initialized. Please login first.")
 
-                reservation = self.ktx_client.reserve(train)
-                return True, reservation, "Reservation successful"
+                # Map seat type string to ReserveOption enum
+                option = ReserveOption.GENERAL_FIRST  # default
+                if seat_type == "general_only":
+                    option = ReserveOption.GENERAL_ONLY
+                elif seat_type == "special_only":
+                    option = ReserveOption.SPECIAL_ONLY
+                elif seat_type == "special_first":
+                    option = ReserveOption.SPECIAL_FIRST
+
+                reservation = self.ktx_client.reserve(train, option=option)
+                return True, reservation, str(reservation)
 
             else:
                 return False, None, "Invalid train type"
@@ -201,6 +272,71 @@ class TrainService:
                 self.ktx_client.clear()
         except Exception:
             pass  # Ignore errors during clear
+
+    async def pay_with_card(
+        self,
+        train_type: str,
+        reservation: Any,
+        card_number: str,
+        card_password: str,
+        birthday: str,
+        expire_date: str
+    ) -> Tuple[bool, str]:
+        """
+        Pay for a reservation with card (same as CLI pay_card).
+
+        Args:
+            train_type: 'SRT' or 'KTX'
+            reservation: Reservation object
+            card_number: Card number
+            card_password: Card password (first 2 digits)
+            birthday: Birthday (YYMMDD for personal, YYYYMMDD for business)
+            expire_date: Card expiration date (YYMM)
+
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
+            # Determine card type based on birthday length
+            card_type = "J" if len(birthday) == 6 else "S"  # J: 개인, S: 법인
+
+            if train_type == "SRT":
+                if not self.srt_client:
+                    raise ValueError("SRT client not initialized.")
+
+                result = self.srt_client.pay_with_card(
+                    reservation,
+                    card_number,
+                    card_password,
+                    birthday,
+                    expire_date,
+                    0,  # installment months (0 = 일시불)
+                    card_type
+                )
+                return result, "Payment successful"
+
+            elif train_type == "KTX":
+                if not self.ktx_client:
+                    raise ValueError("KTX client not initialized.")
+
+                result = self.ktx_client.pay_with_card(
+                    reservation,
+                    card_number,
+                    card_password,
+                    birthday,
+                    expire_date,
+                    0,  # installment months (0 = 일시불)
+                    card_type
+                )
+                return result, "Payment successful"
+
+            else:
+                return False, "Invalid train type"
+
+        except (SRTError, KorailError) as e:
+            return False, f"Payment failed: {str(e)}"
+        except Exception as e:
+            return False, f"Payment failed: {str(e)}"
 
     def logout(self, train_type: str):
         """Logout from train service."""

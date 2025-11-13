@@ -196,9 +196,9 @@ class ReservationService:
 
                         # If no specific trains selected, try any available train
                         if not reservation.selected_trains or train_number in reservation.selected_trains:
-                            # Check if seats are available
-                            if hasattr(train, 'seat_available') and train.seat_available():
-                                # Try to reserve
+                            # Check if seats are available (including standby) - same as CLI
+                            if train_service.is_seat_available(train, reservation.train_type, reservation.seat_type):
+                                # Try to reserve with seat type preference
                                 reserve_success, reserve_obj, reserve_msg = await train_service.reserve_train(
                                     reservation.train_type,
                                     train,
@@ -208,19 +208,65 @@ class ReservationService:
 
                                 if reserve_success:
                                     # Reservation successful
+                                    is_waiting = hasattr(reserve_obj, 'is_waiting') and reserve_obj.is_waiting
+
                                     reservation.status = ReservationStatus.RESERVED
                                     reservation.result_data = {
                                         "train_number": train_number,
                                         "message": reserve_msg,
-                                        "timestamp": datetime.utcnow().isoformat()
+                                        "timestamp": datetime.utcnow().isoformat(),
+                                        "is_waiting": is_waiting
                                     }
                                     reservation.completed_at = datetime.utcnow()
                                     await db.commit()
 
                                     print(f"[Polling #{reservation_id}] SUCCESS - Reserved train {train_number}")
 
+                                    # Auto payment if enabled and not waiting (same as CLI)
+                                    payment_msg = ""
+                                    if reservation.auto_payment and not is_waiting:
+                                        # Get card credentials
+                                        from backend.models.credential import CardCredential
+                                        card_result = await db.execute(
+                                            select(CardCredential).where(CardCredential.user_id == reservation.user_id)
+                                        )
+                                        card_cred = card_result.scalar_one_or_none()
+
+                                        if card_cred:
+                                            # Decrypt card info
+                                            card_number = credential_encryption.decrypt(card_cred.encrypted_card_number)
+                                            card_password = credential_encryption.decrypt(card_cred.encrypted_card_password)
+                                            birthday = credential_encryption.decrypt(card_cred.encrypted_birthday)
+                                            expire_date = credential_encryption.decrypt(card_cred.encrypted_expire_date)
+
+                                            # Try to pay
+                                            payment_success, payment_result = await train_service.pay_with_card(
+                                                reservation.train_type,
+                                                reserve_obj,
+                                                card_number,
+                                                card_password,
+                                                birthday,
+                                                expire_date
+                                            )
+
+                                            if payment_success:
+                                                print(f"[Polling #{reservation_id}] Payment SUCCESS")
+                                                payment_msg = "\n💳 결제 완료"
+                                                reservation.result_data["payment"] = "completed"
+                                            else:
+                                                print(f"[Polling #{reservation_id}] Payment FAILED: {payment_result}")
+                                                payment_msg = f"\n⚠️ 결제 실패: {payment_result}"
+                                                reservation.result_data["payment"] = "failed"
+                                                reservation.result_data["payment_error"] = payment_result
+                                        else:
+                                            print(f"[Polling #{reservation_id}] No card credentials found")
+                                            payment_msg = "\n⚠️ 결제 정보 없음"
+                                            reservation.result_data["payment"] = "no_card"
+
+                                        await db.commit()
+
                                     # Send telegram notification
-                                    telegram_msg = f"🎉 예매 성공! 🎉\n\n열차번호: {train_number}\n{reserve_msg}"
+                                    telegram_msg = f"🎉 예매 성공! 🎉\n\n열차번호: {train_number}\n{reserve_msg}{payment_msg}"
                                     await self._send_telegram_notification(db, reservation.user_id, telegram_msg)
 
                                     # Notify via callback if provided
